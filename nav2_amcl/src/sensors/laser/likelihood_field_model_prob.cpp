@@ -60,6 +60,7 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
   double log_p;
   double obs_range, obs_bearing;
   double total_weight;
+  double map_range;
   pf_sample_t * sample;
   pf_vector_t pose;
   pf_vector_t hit;
@@ -173,8 +174,18 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
       if (!MAP_VALID(self->map_, mi, mj)) {
         pz += self->z_hit_ * max_dist_prob;
       } else {
+        /************************************************************************************************* 
+        Here we check if the beam hits close enough to an obstacle to determine if it is a good hit.
+        We should also check if the beam goes through a map obstacle. 
+        */
         z = self->map_->cells[MAP_INDEX(self->map_, mi, mj)].occ_dist;   
-        if (z < beam_skip_distance) {
+
+        // Here I use obs_range as max dist to optimize computation time
+        map_range = map_calc_range(
+          self->map_, pose.v[0], pose.v[1],
+          pose.v[2] + obs_bearing, obs_range);
+
+        if (z < beam_skip_distance || map_range < obs_range - beam_skip_distance) {
           obs_count[beam_ind] += 1;
         }
         pz += self->z_hit_ * exp(-(z * z) / z_hit_denom);
