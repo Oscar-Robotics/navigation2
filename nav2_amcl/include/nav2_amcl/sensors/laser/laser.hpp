@@ -22,6 +22,7 @@
 #include "nav2_amcl/pf/pf.hpp"
 #include "nav2_amcl/pf/pf_pdf.hpp"
 #include "nav2_amcl/map/map.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 namespace nav2_amcl
 {
@@ -79,6 +80,14 @@ protected:
   int max_samples_;
   int max_obs_;
   double ** temp_obs_;
+ 
+  /*
+  * @brief Check if an obstacle is in the footprint of the robot
+  * @param pose Pose to check
+  * @return if there is an obstacle in the footprint
+  */
+  bool ObstacleInFootprint(const pf_vector_t & pose);
+  double footprint_radius_;
 };
 
 /*
@@ -179,6 +188,7 @@ public:
    */
   LikelihoodFieldModelProb(
     double z_hit, double z_rand, double sigma_hit, double max_occ_dist,
+    bool check_footprint, double footprint_radius,
     bool do_beamskip, double beam_skip_distance,
     double beam_skip_threshold, double beam_skip_error_threshold,
     size_t max_beams, map_t * map);
@@ -199,6 +209,7 @@ private:
    * @return if it was succesful
    */
   static double sensorFunction(LaserData * data, pf_sample_set_t * set);
+  bool check_footprint_;
   bool do_beamskip_;
   double beam_skip_distance_;
   double beam_skip_threshold_;

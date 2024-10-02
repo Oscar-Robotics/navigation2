@@ -30,7 +30,8 @@ namespace nav2_amcl
 
 LikelihoodFieldModelProb::LikelihoodFieldModelProb(
   double z_hit, double z_rand, double sigma_hit,
-  double max_occ_dist, bool do_beamskip,
+  double max_occ_dist, bool check_footprint, double footprint_radius,
+  bool do_beamskip,
   double beam_skip_distance,
   double beam_skip_threshold,
   double beam_skip_error_threshold,
@@ -40,6 +41,8 @@ LikelihoodFieldModelProb::LikelihoodFieldModelProb(
   z_hit_ = z_hit;
   z_rand_ = z_rand;
   sigma_hit_ = sigma_hit;
+  check_footprint_ = check_footprint;
+  footprint_radius_ = footprint_radius;
   do_beamskip_ = do_beamskip;
   beam_skip_distance_ = beam_skip_distance;
   beam_skip_threshold_ = beam_skip_threshold;
@@ -123,6 +126,15 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
     sample = set->samples + j;
     pose = sample->pose;
 
+    // If there is an occupied cell in the robot footprint the particle is invalid
+    if (self->check_footprint_)
+    {
+      if (self->ObstacleInFootprint(sample->pose))
+      {
+        sample->weight = 0.0; 
+      }
+    }
+
     // Take account of the laser pose relative to the robot
     pose = pf_vector_coord_add(self->laser_pose_, pose);
 
@@ -161,7 +173,7 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
       if (!MAP_VALID(self->map_, mi, mj)) {
         pz += self->z_hit_ * max_dist_prob;
       } else {
-        z = self->map_->cells[MAP_INDEX(self->map_, mi, mj)].occ_dist;
+        z = self->map_->cells[MAP_INDEX(self->map_, mi, mj)].occ_dist;   
         if (z < beam_skip_distance) {
           obs_count[beam_ind] += 1;
         }

@@ -70,4 +70,22 @@ Laser::SetLaserPose(pf_vector_t & laser_pose)
   laser_pose_ = laser_pose;
 }
 
+bool
+Laser::ObstacleInFootprint(const pf_vector_t & pose)
+{
+  // Convert the pose into grid coordinates
+  int i = MAP_GXWX(map_, pose.v[0]);
+  int j = MAP_GYWY(map_, pose.v[1]);
+
+  // Get the cell
+  map_cell_t cell = map_->cells[MAP_INDEX(map_, i, j)];
+
+  if (cell.occ_state == +1 || cell.occ_dist < footprint_radius_) {
+    // We need to print from here, it does not seem to work :(
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace nav2_amcl

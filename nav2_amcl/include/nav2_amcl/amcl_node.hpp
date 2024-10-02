@@ -363,6 +363,8 @@ protected:
   double beam_skip_error_threshold_;
   double beam_skip_threshold_;
   bool do_beamskip_;
+  bool check_footprint_;
+  double footprint_radius_;
   std::string global_frame_id_;
   double lambda_short_;
   double laser_likelihood_max_dist_;

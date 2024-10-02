@@ -92,6 +92,8 @@ AmclNode::AmclNode(const rclcpp::NodeOptions & options)
   add_parameter("beam_skip_error_threshold", rclcpp::ParameterValue(0.9));
   add_parameter("beam_skip_threshold", rclcpp::ParameterValue(0.3));
   add_parameter("do_beamskip", rclcpp::ParameterValue(false));
+  add_parameter("check_footprint", rclcpp::ParameterValue(false));
+  add_parameter("footprint_radius", rclcpp::ParameterValue(0.0));
 
   add_parameter(
     "global_frame_id", rclcpp::ParameterValue(std::string("map")),
@@ -1028,9 +1030,10 @@ AmclNode::createLaserObject()
   }
 
   if (sensor_model_type_ == "likelihood_field_prob") {
+    RCLCPP_WARN(get_logger(), "CHECK FOOTPRINT: %d", check_footprint_);
     return new nav2_amcl::LikelihoodFieldModelProb(
       z_hit_, z_rand_, sigma_hit_,
-      laser_likelihood_max_dist_, do_beamskip_, beam_skip_distance_, beam_skip_threshold_,
+      laser_likelihood_max_dist_, check_footprint_, footprint_radius_, do_beamskip_, beam_skip_distance_, beam_skip_threshold_,
       beam_skip_error_threshold_, max_beams_, map_);
   }
 
@@ -1055,6 +1058,8 @@ AmclNode::initParameters()
   get_parameter("beam_skip_error_threshold", beam_skip_error_threshold_);
   get_parameter("beam_skip_threshold", beam_skip_threshold_);
   get_parameter("do_beamskip", do_beamskip_);
+  get_parameter("check_footprint", check_footprint_);
+  get_parameter("footprint_radius", footprint_radius_);
   get_parameter("global_frame_id", global_frame_id_);
   get_parameter("lambda_short", lambda_short_);
   get_parameter("laser_likelihood_max_dist", laser_likelihood_max_dist_);
