@@ -30,7 +30,8 @@ namespace nav2_amcl
 
 LikelihoodFieldModelProb::LikelihoodFieldModelProb(
   double z_hit, double z_rand, double sigma_hit,
-  double max_occ_dist, bool check_footprint, double footprint_radius,
+  double max_occ_dist, bool check_occlusion, double occlusion_distance,
+  bool check_footprint, double footprint_radius,
   bool do_beamskip,
   double beam_skip_distance,
   double beam_skip_threshold,
@@ -41,6 +42,8 @@ LikelihoodFieldModelProb::LikelihoodFieldModelProb(
   z_hit_ = z_hit;
   z_rand_ = z_rand;
   sigma_hit_ = sigma_hit;
+  check_occlusion_ = check_occlusion;
+  occlusion_distance_ = occlusion_distance;
   check_footprint_ = check_footprint;
   footprint_radius_ = footprint_radius;
   do_beamskip_ = do_beamskip;
@@ -176,17 +179,24 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
       } else {
         /************************************************************************************************* 
         Here we check if the beam hits close enough to an obstacle to determine if it is a good hit.
-        We should also check if the beam goes through a map obstacle. 
+        We should also check if the beam goes through a map obstacle, which should be impossible. 
         */
         z = self->map_->cells[MAP_INDEX(self->map_, mi, mj)].occ_dist;   
 
-        // Here I use obs_range as max dist to optimize computation time
-        map_range = map_calc_range(
-          self->map_, pose.v[0], pose.v[1],
-          pose.v[2] + obs_bearing, obs_range);
-
-        if (z < beam_skip_distance || map_range < obs_range - beam_skip_distance) {
+        if (z < beam_skip_distance) {
           obs_count[beam_ind] += 1;
+          if (self->check_occlusion_) {
+            // Check up to obs_range for computation efficiency
+            map_range = map_calc_range(
+              self->map_, pose.v[0], pose.v[1],
+              pose.v[2] + obs_bearing, obs_range);
+            
+            // If occlusion is detected, skip it and penalize with max distance
+            if (map_range < obs_range - self->occlusion_distance_) {
+              obs_count[beam_ind] -= 1;
+              z = self->map_->max_occ_dist;
+            }
+          }
         }
         pz += self->z_hit_ * exp(-(z * z) / z_hit_denom);
       }

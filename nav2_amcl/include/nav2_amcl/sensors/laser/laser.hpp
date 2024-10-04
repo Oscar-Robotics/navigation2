@@ -188,6 +188,7 @@ public:
    */
   LikelihoodFieldModelProb(
     double z_hit, double z_rand, double sigma_hit, double max_occ_dist,
+    bool check_occlusion, double occlusion_distance,
     bool check_footprint, double footprint_radius,
     bool do_beamskip, double beam_skip_distance,
     double beam_skip_threshold, double beam_skip_error_threshold,
@@ -209,6 +210,8 @@ private:
    * @return if it was succesful
    */
   static double sensorFunction(LaserData * data, pf_sample_set_t * set);
+  double occlusion_distance_;
+  bool check_occlusion_;
   bool check_footprint_;
   bool do_beamskip_;
   double beam_skip_distance_;
