@@ -110,6 +110,8 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
   // realloc indicates if we need to reallocate the temp data structure needed to do beamskipping
   bool realloc = false;
 
+  bool obstacle_in_footprint = false;
+
   if (do_beamskip) {
     if (self->max_obs_ < self->max_beams_) {
       realloc = true;
@@ -133,10 +135,7 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
     // If there is an occupied cell in the robot footprint the particle is invalid
     if (self->check_footprint_)
     {
-      if (self->ObstacleInFootprint(sample->pose))
-      {
-        sample->weight = 0.0; 
-      }
+      obstacle_in_footprint = self->ObstacleInFootprint(sample->pose);
     }
 
     // Take account of the laser pose relative to the robot
@@ -175,6 +174,8 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
       // Off-map penalized as max distance
 
       if (!MAP_VALID(self->map_, mi, mj)) {
+        pz += self->z_hit_ * max_dist_prob;
+      } else if (self->check_footprint_ && obstacle_in_footprint) {
         pz += self->z_hit_ * max_dist_prob;
       } else {
         /************************************************************************************************* 
