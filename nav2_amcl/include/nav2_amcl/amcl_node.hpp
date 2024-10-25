@@ -348,6 +348,10 @@ protected:
   double initial_pose_y_;
   double initial_pose_z_;
   double initial_pose_yaw_;
+  double initial_cov_x_;
+  double initial_cov_y_;
+  double initial_cov_z_;
+  double initial_cov_yaw_;
 
   /*
    * @brief Get ROS parameters for node
