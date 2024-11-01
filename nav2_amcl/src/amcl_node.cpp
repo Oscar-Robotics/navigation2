@@ -93,7 +93,8 @@ AmclNode::AmclNode(const rclcpp::NodeOptions & options)
   add_parameter("beam_skip_threshold", rclcpp::ParameterValue(0.3));
   add_parameter("do_beamskip", rclcpp::ParameterValue(false));
   add_parameter("check_footprint", rclcpp::ParameterValue(false), "Penalize particles that have obstacles in the robot footprint");
-  add_parameter("footprint_radius", rclcpp::ParameterValue(0.0), "Radius of the robot footprint");
+  add_parameter("footprint_type", rclcpp::ParameterValue(std::string("circle")), "Type of the robot footprint, either circle or square");
+  add_parameter("footprint_dim", rclcpp::ParameterValue(0.0), "Dimension of the robot footprint, radius for circle, half side length for square");
   add_parameter("check_occlusion", rclcpp::ParameterValue(false), "Skip beams that go through map obstacles");
   add_parameter("occlusion_distance", rclcpp::ParameterValue(0.0), "Maximum distance to consider for occlusion");
 
@@ -1034,7 +1035,7 @@ AmclNode::createLaserObject()
   if (sensor_model_type_ == "likelihood_field_prob") {
     return new nav2_amcl::LikelihoodFieldModelProb(
       z_hit_, z_rand_, sigma_hit_,
-      laser_likelihood_max_dist_, check_occlusion_, occlusion_distance_, check_footprint_, footprint_radius_,
+      laser_likelihood_max_dist_, check_occlusion_, occlusion_distance_, check_footprint_, footprint_dim_, footprint_type_,
       do_beamskip_, beam_skip_distance_, beam_skip_threshold_,
       beam_skip_error_threshold_, max_beams_, map_);
   }
@@ -1063,7 +1064,8 @@ AmclNode::initParameters()
   get_parameter("check_footprint", check_footprint_);
   get_parameter("check_occlusion", check_occlusion_);
   get_parameter("occlusion_distance", occlusion_distance_);
-  get_parameter("footprint_radius", footprint_radius_);
+  get_parameter("footprint_dim", footprint_dim_);
+  get_parameter("footprint_type", footprint_type_);
   get_parameter("global_frame_id", global_frame_id_);
   get_parameter("lambda_short", lambda_short_);
   get_parameter("laser_likelihood_max_dist", laser_likelihood_max_dist_);

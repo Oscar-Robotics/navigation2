@@ -366,7 +366,8 @@ protected:
   bool check_occlusion_;
   double occlusion_distance_;
   bool check_footprint_;
-  double footprint_radius_;
+  double footprint_dim_;
+  std::string footprint_type_;
   std::string global_frame_id_;
   double lambda_short_;
   double laser_likelihood_max_dist_;

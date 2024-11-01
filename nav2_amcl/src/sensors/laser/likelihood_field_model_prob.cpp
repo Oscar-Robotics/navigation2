@@ -31,7 +31,7 @@ namespace nav2_amcl
 LikelihoodFieldModelProb::LikelihoodFieldModelProb(
   double z_hit, double z_rand, double sigma_hit,
   double max_occ_dist, bool check_occlusion, double occlusion_distance,
-  bool check_footprint, double footprint_radius,
+  bool check_footprint, double footprint_dim, std::string footprint_type,
   bool do_beamskip,
   double beam_skip_distance,
   double beam_skip_threshold,
@@ -45,11 +45,22 @@ LikelihoodFieldModelProb::LikelihoodFieldModelProb(
   check_occlusion_ = check_occlusion;
   occlusion_distance_ = occlusion_distance;
   check_footprint_ = check_footprint;
-  footprint_radius_ = footprint_radius;
   do_beamskip_ = do_beamskip;
   beam_skip_distance_ = beam_skip_distance;
   beam_skip_threshold_ = beam_skip_threshold;
   beam_skip_error_threshold_ = beam_skip_error_threshold;
+
+  footprint_type_ = footprint_type == "circle" ? CIRCLE :
+                    footprint_type == "square" ? SQUARE :
+                    throw std::invalid_argument("Invalid footprint type " + footprint_type);
+
+  if (footprint_type_ == CIRCLE) {
+    footprint_radius_ = footprint_dim;
+  } else if (footprint_type_ == SQUARE) {
+    footprint_radius_ = 2.0 * pow(footprint_dim, 2.0) ;
+    footprint_half_side_length_ = footprint_dim;
+  }
+
   map_update_cspace(map, max_occ_dist);
 }
 
@@ -135,7 +146,7 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
     // If there is an occupied cell in the robot footprint the particle is invalid
     if (self->check_footprint_)
     {
-      obstacle_in_footprint = self->ObstacleInFootprint(sample->pose);
+      obstacle_in_footprint = self->CheckFootprintForObstacles(sample->pose);
     }
 
     // Take account of the laser pose relative to the robot
@@ -171,11 +182,13 @@ LikelihoodFieldModelProb::sensorFunction(LaserData * data, pf_sample_set_t * set
       mj = MAP_GYWY(self->map_, hit.v[1]);
 
       // Part 1: Get distance from the hit to closest obstacle.
-      // Off-map penalized as max distance
 
+      // Off-map penalized as max distance
       if (!MAP_VALID(self->map_, mi, mj)) {
         pz += self->z_hit_ * max_dist_prob;
-      } else if (self->check_footprint_ && obstacle_in_footprint) {
+
+      // Obstacle in footprint penalized as max distance
+      } else if (obstacle_in_footprint) {
         pz += self->z_hit_ * max_dist_prob;
       } else {
         /************************************************************************************************* 

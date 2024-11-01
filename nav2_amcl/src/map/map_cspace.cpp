@@ -126,12 +126,14 @@ void enqueue(
   int di = abs(i - src_i);
   int dj = abs(j - src_j);
   double distance = cdm->distances_[di][dj];
+  double direction = atan2(dj, di);
 
   if (distance > cdm->cell_radius_) {
     return;
   }
 
   map->cells[MAP_INDEX(map, i, j)].occ_dist = distance * map->scale;
+  map->cells[MAP_INDEX(map, i, j)].occ_dir = direction;
 
   CellData cell;
   cell.map_ = map;

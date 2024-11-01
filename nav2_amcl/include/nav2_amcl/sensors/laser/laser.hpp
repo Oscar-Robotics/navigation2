@@ -30,6 +30,11 @@ namespace nav2_amcl
 // Forward declarations
 class LaserData;
 
+enum FootprintType {
+    CIRCLE,
+    SQUARE
+};
+
 /*
  * @class Laser
  * @brief Base class for laser sensor models
@@ -86,8 +91,10 @@ protected:
   * @param pose Pose to check
   * @return if there is an obstacle in the footprint
   */
-  bool ObstacleInFootprint(const pf_vector_t & pose);
+  bool CheckFootprintForObstacles(const pf_vector_t & pose);
   double footprint_radius_;
+  double footprint_half_side_length_;
+  FootprintType footprint_type_;
 };
 
 /*
@@ -189,7 +196,7 @@ public:
   LikelihoodFieldModelProb(
     double z_hit, double z_rand, double sigma_hit, double max_occ_dist,
     bool check_occlusion, double occlusion_distance,
-    bool check_footprint, double footprint_radius,
+    bool check_footprint, double footprint_radius, std::string footprint_type,
     bool do_beamskip, double beam_skip_distance,
     double beam_skip_threshold, double beam_skip_error_threshold,
     size_t max_beams, map_t * map);

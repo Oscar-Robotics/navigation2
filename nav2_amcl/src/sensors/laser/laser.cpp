@@ -71,7 +71,7 @@ Laser::SetLaserPose(pf_vector_t & laser_pose)
 }
 
 bool
-Laser::ObstacleInFootprint(const pf_vector_t & pose)
+Laser::CheckFootprintForObstacles(const pf_vector_t & pose)
 {
   // Convert the pose into grid coordinates
   int i = MAP_GXWX(map_, pose.v[0]);
@@ -80,9 +80,33 @@ Laser::ObstacleInFootprint(const pf_vector_t & pose)
   // Get the cell
   map_cell_t cell = map_->cells[MAP_INDEX(map_, i, j)];
 
-  if (cell.occ_state == +1 || cell.occ_dist < footprint_radius_) {
-    // We need to print from here, it does not seem to work :(
+  if (cell.occ_state == +1) {
     return true;
+  }
+
+  if (footprint_type_ == FootprintType::CIRCLE) {
+    return footprint_radius_ < cell.occ_dist;
+  } else if (footprint_type_ == FootprintType::SQUARE) {
+    
+    if (footprint_radius_ < cell.occ_dist)
+      return false;
+
+    // Calculate the direction of the obstacle relative to the robot's orientation
+    double relative_occ_dir = cell.occ_dir - pose.v[2];
+
+    // Normalize the relative direction to [-π, π] for consistency
+    if (relative_occ_dir > M_PI) {
+        relative_occ_dir -= 2 * M_PI;
+    } else if (relative_occ_dir < -M_PI) {
+        relative_occ_dir += 2 * M_PI;
+    }
+
+    // Decompose the distance to the obstacle along the robot's axes
+    double dist_x = cell.occ_dist * cos(relative_occ_dir);
+    double dist_y = cell.occ_dist * sin(relative_occ_dir);
+
+    // Check if the obstacle is within the bounds of the square footprint
+    return (fabs(dist_x) > footprint_half_side_length_ && fabs(dist_y) > footprint_half_side_length_);
   }
 
   return false;
