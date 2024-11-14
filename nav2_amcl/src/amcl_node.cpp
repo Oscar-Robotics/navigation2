@@ -150,10 +150,6 @@ AmclNode::AmclNode(const rclcpp::NodeOptions & options)
     "Y coordinate of the initial robot pose in the map frame");
 
   add_parameter(
-    "initial_cov.z", rclcpp::ParameterValue(0.0),
-    "Z coordinate of the initial robot pose in the map frame");
-
-  add_parameter(
     "initial_cov.yaw", rclcpp::ParameterValue(0.0),
     "Yaw of the initial robot pose in the map frame");
 
@@ -296,7 +292,6 @@ AmclNode::on_activate(const rclcpp_lifecycle::State & /*state*/)
     
     msg->pose.covariance[6 * 0 + 0] = initial_cov_x_;
     msg->pose.covariance[6 * 1 + 1] = initial_cov_y_;
-    msg->pose.covariance[6 * 2 + 2] = initial_cov_z_;
     msg->pose.covariance[6 * 5 + 5] = initial_cov_yaw_;
 
     initialPoseReceived(msg);
@@ -1089,7 +1084,6 @@ AmclNode::initParameters()
   get_parameter("initial_pose.yaw", initial_pose_yaw_);
   get_parameter("initial_cov.x", initial_cov_x_);
   get_parameter("initial_cov.y", initial_cov_y_);
-  get_parameter("initial_cov.z", initial_cov_z_);
   get_parameter("initial_cov.yaw", initial_cov_yaw_);
   get_parameter("max_beams", max_beams_);
   get_parameter("max_particles", max_particles_);
