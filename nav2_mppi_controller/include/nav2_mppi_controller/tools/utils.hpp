@@ -291,10 +291,10 @@ auto shortest_angular_distance(
  */
 inline size_t findPathFurthestReachedPoint(const CriticData & data)
 {
-  const auto traj_x = xt::view(data.trajectories.x, xt::all(), -1, xt::newaxis());
+  const auto traj_x = xt::view(data.trajectories.x, xt::all(), -1, xt::newaxis()); // Extract last point
   const auto traj_y = xt::view(data.trajectories.y, xt::all(), -1, xt::newaxis());
 
-  const auto dx = data.path.x - traj_x;
+  const auto dx = data.path.x - traj_x; // Get distance between last point and all path points
   const auto dy = data.path.y - traj_y;
 
   const auto dists = dx * dx + dy * dy;

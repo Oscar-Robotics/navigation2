@@ -32,6 +32,7 @@ void PathAlignCritic::initialize()
   getParam(max_path_occupancy_ratio_, "max_path_occupancy_ratio", 0.07);
   getParam(offset_from_furthest_, "offset_from_furthest", 20);
   getParam(trajectory_point_step_, "trajectory_point_step", 4);
+  getParam(angle_scaling_factor_, "angle_scaling_factor", 1.0);
   getParam(
     threshold_to_consider_,
     "threshold_to_consider", 0.5);
@@ -119,7 +120,7 @@ void PathAlignCritic::score(CriticData & data)
         if (use_path_orientations_) {
           const auto T_yaw = xt::view(data.trajectories.yaws, t, xt::all());
           dyaw = angles::shortest_angular_distance(P_yaw(path_pt), T_yaw(p));
-          summed_path_dist += sqrtf(dx * dx + dy * dy + dyaw * dyaw);
+          summed_path_dist += sqrtf(dx * dx + dy * dy + angle_scaling_factor_ * (dyaw * dyaw));
         } else {
           summed_path_dist += sqrtf(dx * dx + dy * dy);
         }

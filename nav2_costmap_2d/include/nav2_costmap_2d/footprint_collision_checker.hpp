@@ -49,17 +49,29 @@ public:
    */
   explicit FootprintCollisionChecker(CostmapT costmap);
   /**
-   * @brief Find the footprint cost in oriented footprint
+   * @brief Find the footprint max cost in oriented footprint
    */
   double footprintCost(const Footprint footprint);
+  /**
+   * @brief Find the footprint mean cost in oriented footprint
+   */
+  double footprintMeanCost(const Footprint footprint);
   /**
    * @brief Find the footprint cost a a post with an unoriented footprint
    */
   double footprintCostAtPose(double x, double y, double theta, const Footprint footprint);
   /**
-   * @brief Get the cost for a line segment
+   * @brief Find the footprint mean cost a a post with an unoriented footprint
+   */
+  double footprintMeanCostAtPose(double x, double y, double theta, const Footprint footprint);
+  /**
+   * @brief Get the max cost for a line segment
    */
   double lineCost(int x0, int x1, int y0, int y1) const;
+  /**
+   * @brief Get the mean cost for a line segment
+   */
+  double lineMeanCost(int x0, int x1, int y0, int y1) const;
   /**
    * @brief Get the map coordinates from a world point
    */

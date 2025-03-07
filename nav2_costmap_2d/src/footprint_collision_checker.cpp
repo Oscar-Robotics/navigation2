@@ -85,6 +85,55 @@ double FootprintCollisionChecker<CostmapT>::footprintCost(const Footprint footpr
 }
 
 template<typename CostmapT>
+double FootprintCollisionChecker<CostmapT>::footprintMeanCost(const Footprint footprint)
+{
+  // now we really have to lay down the footprint in the costmap_ grid
+  unsigned int x0, x1, y0, y1;
+  double footprint_cost = 0.0;
+
+  // get the cell coord of the first point
+  if (!worldToMap(footprint[0].x, footprint[0].y, x0, y0)) {
+    return static_cast<double>(LETHAL_OBSTACLE);
+  }
+
+  // cache the start to eliminate a worldToMap call
+  unsigned int xstart = x0;
+  unsigned int ystart = y0;
+  unsigned int line_count = 0;
+
+  // we need to rasterize each line in the footprint
+  for (unsigned int i = 0; i < footprint.size() - 1; ++i) {
+    // get the cell coord of the second point
+    if (!worldToMap(footprint[i + 1].x, footprint[i + 1].y, x1, y1)) {
+      return static_cast<double>(LETHAL_OBSTACLE);
+    }
+
+    double line_cost = lineMeanCost(x0, x1, y0, y1);
+
+    // the second point is next iteration's first point
+    x0 = x1;
+    y0 = y1;
+
+    // if in collision, no need to continue
+    if (footprint_cost == static_cast<double>(LETHAL_OBSTACLE)) {
+      return footprint_cost;
+    }
+
+    footprint_cost += line_cost;
+    line_count++;
+  }
+
+  // we also need to connect the first point in the footprint to the last point
+  // the last iteration's x1, y1 are the last footprint point's coordinates
+
+  double line_cost = lineMeanCost(xstart, x1, ystart, y1);
+  footprint_cost += line_cost;
+  line_count++;
+
+  return line_cost == static_cast<double>(LETHAL_OBSTACLE) ? line_cost : footprint_cost / line_count;
+}
+
+template<typename CostmapT>
 double FootprintCollisionChecker<CostmapT>::lineCost(int x0, int x1, int y0, int y1) const
 {
   double line_cost = 0.0;
@@ -105,6 +154,48 @@ double FootprintCollisionChecker<CostmapT>::lineCost(int x0, int x1, int y0, int
 
   return line_cost;
 }
+
+template<typename CostmapT>
+double FootprintCollisionChecker<CostmapT>::lineMeanCost(int x0, int x1, int y0, int y1) const
+{
+  double line_cost = 0.0;
+  double point_cost = -1.0;
+  unsigned int point_count = 0;
+
+  for (nav2_util::LineIterator line(x0, y0, x1, y1); line.isValid(); line.advance()) {
+    point_cost = pointCost(line.getX(), line.getY());   // Score the current point
+    // if in collision, no need to continue
+    if (point_cost == static_cast<double>(LETHAL_OBSTACLE)) {
+      return point_cost;
+    }
+
+    line_cost += point_cost;
+    point_count++;
+  }
+
+  return line_cost / point_count;
+}
+
+// template<typename CostmapT>
+// double FootprintCollisionChecker<CostmapT>::lineMeanCost(int x0, int x1, int y0, int y1) const
+// {
+//   double line_cost = 0.0;
+//   double point_cost = -1.0;
+//   std::vector<double> costs;
+
+//   for (nav2_util::LineIterator line(x0, y0, x1, y1); line.isValid(); line.advance()) {
+//     point_cost = pointCost(line.getX(), line.getY());   // Score the current point
+//     // if in collision, no need to continue
+//     if (point_cost == static_cast<double>(LETHAL_OBSTACLE)) {
+//       return point_cost;
+//     }
+
+//     costs.push_back(point_cost);
+//   }
+//   Eigen::Map<Eigen::VectorXd> cost_vector(costs.data(), costs.size());
+
+//   return cost_vector.mean();
+// }
 
 template<typename CostmapT>
 bool FootprintCollisionChecker<CostmapT>::worldToMap(
@@ -140,6 +231,23 @@ double FootprintCollisionChecker<CostmapT>::footprintCostAtPose(
   }
 
   return footprintCost(oriented_footprint);
+}
+
+template<typename CostmapT>
+double FootprintCollisionChecker<CostmapT>::footprintMeanCostAtPose(
+  double x, double y, double theta, const Footprint footprint)
+{
+  double cos_th = cos(theta);
+  double sin_th = sin(theta);
+  Footprint oriented_footprint;
+  for (unsigned int i = 0; i < footprint.size(); ++i) {
+    geometry_msgs::msg::Point new_pt;
+    new_pt.x = x + (footprint[i].x * cos_th - footprint[i].y * sin_th);
+    new_pt.y = y + (footprint[i].x * sin_th + footprint[i].y * cos_th);
+    oriented_footprint.push_back(new_pt);
+  }
+
+  return footprintMeanCost(oriented_footprint);
 }
 
 // declare our valid template parameters

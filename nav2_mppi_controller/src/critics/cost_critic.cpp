@@ -137,10 +137,13 @@ void CostCritic::score(CriticData & data)
       // The costAtPose doesn't use orientation
       // The footprintCostAtPose will always return "INSCRIBED" if footprint is over it
       // So the center point has more information than the footprint
-      pose_cost = costAtPose(traj.x(i, j), traj.y(i, j));
+      pose_cost = static_cast<float>(collision_checker_.footprintMeanCostAtPose(
+        traj.x(i, j), traj.y(i, j), traj.yaws(i, j), costmap_ros_->getRobotFootprint()));
+      
       if (pose_cost < 1.0f) {continue;}  // In free space
 
-      if (inCollision(pose_cost, traj.x(i, j), traj.y(i, j), traj.yaws(i, j))) {
+      using namespace nav2_costmap_2d; // NOLINT
+      if (pose_cost >= LETHAL_OBSTACLE) {
         trajectory_collide = true;
         break;
       }
@@ -148,7 +151,6 @@ void CostCritic::score(CriticData & data)
       // Let near-collision trajectory points be punished severely
       // Note that we collision check based on the footprint actual,
       // but score based on the center-point cost regardless
-      using namespace nav2_costmap_2d; // NOLINT
       if (pose_cost >= INSCRIBED_INFLATED_OBSTACLE) {
         repulsive_cost[i] += critical_cost_;
       } else if (!near_goal) {  // Generally prefer trajectories further from obstacles
@@ -181,7 +183,7 @@ bool CostCritic::inCollision(float cost, float x, float y, float theta)
   if (consider_footprint_ &&
     (cost >= possibly_inscribed_cost_ || possibly_inscribed_cost_ < 1.0f))
   {
-    cost = static_cast<float>(collision_checker_.footprintCostAtPose(
+    cost = static_cast<float>(collision_checker_.footprintMeanCostAtPose(
         x, y, theta, costmap_ros_->getRobotFootprint()));
   }
 
