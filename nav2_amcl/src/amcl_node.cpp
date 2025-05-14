@@ -273,6 +273,7 @@ AmclNode::on_activate(const rclcpp_lifecycle::State & /*state*/)
   // Lifecycle publishers must be explicitly activated
   pose_pub_->on_activate();
   particle_cloud_pub_->on_activate();
+  residual_errors_pub_->on_activate();
 
   first_pose_sent_ = false;
 
@@ -322,6 +323,7 @@ AmclNode::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   // Lifecycle publishers must be explicitly deactivated
   pose_pub_->on_deactivate();
   particle_cloud_pub_->on_deactivate();
+  residual_errors_pub_->on_deactivate();
 
   // reset dynamic parameter handler
   dyn_params_handler_.reset();
@@ -698,10 +700,14 @@ AmclNode::laserReceived(sensor_msgs::msg::LaserScan::ConstSharedPtr laser_scan)
   }
 
   bool resampled = false;
+  nav2_amcl::LaserData ldata;
 
   // If the robot has moved, update the filter
   if (lasers_update_[laser_index]) {
-    updateFilter(laser_index, laser_scan, pose);
+    if (!getLaserData(laser_index, laser_scan, ldata))
+      return;
+
+    updateFilter(laser_index, ldata, pose);
 
     // Resample the particles
     if (!(++resample_count_ % resample_interval_)) {
@@ -722,6 +728,7 @@ AmclNode::laserReceived(sensor_msgs::msg::LaserScan::ConstSharedPtr laser_scan)
     int max_weight_hyp = -1;
     if (getMaxWeightHyp(hyps, max_weight_hyps, max_weight_hyp)) {
       publishAmclPose(laser_scan, hyps, max_weight_hyp);
+      publishResidualErors(hyps, max_weight_hyp, ldata, laser_index, laser_scan);
       calculateMaptoOdomTransform(laser_scan, hyps, max_weight_hyp);
 
       if (tf_broadcast_ == true) {
@@ -795,12 +802,11 @@ bool AmclNode::shouldUpdateFilter(const pf_vector_t pose, pf_vector_t & delta)
   return update;
 }
 
-bool AmclNode::updateFilter(
+bool AmclNode::getLaserData(
   const int & laser_index,
   const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan,
-  const pf_vector_t & pose)
+  nav2_amcl::LaserData & ldata)
 {
-  nav2_amcl::LaserData ldata;
   ldata.laser = lasers_[laser_index];
   ldata.range_count = laser_scan->ranges.size();
   // To account for lasers that are mounted upside-down, we determine the
@@ -861,10 +867,17 @@ bool AmclNode::updateFilter(
     ldata.ranges[i][1] = angle_min +
       (i * angle_increment);
   }
+  return true;
+}
+
+void AmclNode::updateFilter(
+  const int & laser_index,
+  nav2_amcl::LaserData & ldata,
+  const pf_vector_t & pose)
+{
   lasers_[laser_index]->sensorUpdate(pf_, reinterpret_cast<nav2_amcl::LaserData *>(&ldata));
   lasers_update_[laser_index] = false;
   pf_odom_pose_ = pose;
-  return true;
 }
 
 void
@@ -987,6 +1000,31 @@ AmclNode::publishAmclPose(
     hyps[max_weight_hyp].pf_pose_mean.v[0],
     hyps[max_weight_hyp].pf_pose_mean.v[1],
     hyps[max_weight_hyp].pf_pose_mean.v[2]);
+}
+
+void
+AmclNode::publishResidualErors(
+  const std::vector<amcl_hyp_t> & hyps, const int & max_weight_hyp,
+  nav2_amcl::LaserData & ldata, const int & laser_index,
+  const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan)
+{
+  pf_vector_t pose;
+  pose.v[0] = hyps[max_weight_hyp].pf_pose_mean.v[0];
+  pose.v[1] = hyps[max_weight_hyp].pf_pose_mean.v[1];
+  pose.v[2] = hyps[max_weight_hyp].pf_pose_mean.v[2];
+
+  float * residual_errors = new float[ldata.range_count];
+
+  lasers_[laser_index]->getResidualErors(pose , &ldata, residual_errors);
+
+  std::vector<float> residual_errors_vector(residual_errors, residual_errors + ldata.range_count);
+  delete[] residual_errors;
+
+  auto residual_scan = *laser_scan.get();
+  residual_scan.intensities.resize(ldata.range_count);
+  residual_scan.intensities = residual_errors_vector;
+
+  residual_errors_pub_->publish(std::move(residual_scan));
 }
 
 void
@@ -1547,6 +1585,10 @@ AmclNode::initPubSub()
 
   pose_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "amcl_pose",
+    rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
+
+  residual_errors_pub_ = create_publisher<sensor_msgs::msg::LaserScan>(
+    "residual_errors",
     rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
 
   initial_pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(

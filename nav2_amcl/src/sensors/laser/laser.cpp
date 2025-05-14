@@ -70,4 +70,41 @@ Laser::SetLaserPose(pf_vector_t & laser_pose)
   laser_pose_ = laser_pose;
 }
 
+void
+Laser::getResidualErors(const pf_vector_t & pose, const LaserData * laser_data, float * residuals)
+{
+  pf_vector_t updated_pose = pf_vector_coord_add(laser_pose_, pose);
+  for (int i = 0; i < laser_data->range_count; i++) {
+    // Get the range and angle
+    double obs_range = laser_data->ranges[i][0];
+    double obs_bearing = laser_data->ranges[i][1];
+
+    if (obs_range >= laser_data->range_max) {
+      residuals[i] = -1;
+      continue;
+    }
+
+    // Check for NaN
+    if (obs_range != obs_range) {
+      residuals[i] = -1;
+      continue;
+    }
+
+    // Transform the point into the map frame
+    double x = updated_pose.v[0] + obs_range * cos(updated_pose.v[2] + obs_bearing);
+    double y = updated_pose.v[1] + obs_range * sin(updated_pose.v[2] + obs_bearing);
+
+    int mi, mj;
+    mi = MAP_GXWX(map_, x);
+    mj = MAP_GYWY(map_, y);
+
+    // Get the distance to the nearest obstacle
+    if (!MAP_VALID(map_, mi, mj)) {
+      residuals[i] = -1;
+    } else {
+      residuals[i] = map_->cells[MAP_INDEX(map_, mi, mj)].occ_dist;
+    }
+  }
+}
+
 }  // namespace nav2_amcl
