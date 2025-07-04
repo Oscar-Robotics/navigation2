@@ -92,11 +92,10 @@ Controller::Controller(
   node->get_parameter("controller.transform_tolerance", transform_tolerance_);
 
   if (use_collision_detection_) {
-    std::string costmap_topic, footprint_topic;
-    node->get_parameter("controller.costmap_topic", costmap_topic);
-    node->get_parameter("controller.footprint_topic", footprint_topic);
+    node->get_parameter("controller.costmap_topic", costmap_topic_);
+    node->get_parameter("controller.footprint_topic", footprint_topic_);
     node->get_parameter("controller.dock_collision_threshold", dock_collision_threshold_);
-    configureCollisionChecker(node, costmap_topic, footprint_topic, transform_tolerance_);
+    configureCollisionChecker(node, costmap_topic_, footprint_topic_, transform_tolerance_);
   }
 
   node->get_parameter("controller.rotate_to_heading_angular_vel", rotate_to_heading_angular_vel_);
@@ -221,6 +220,14 @@ bool Controller::isTrajectoryCollisionFree(
   trajectory_pub_->publish(trajectory);
 
   return true;
+}
+
+void Controller::setBaseFrame(const rclcpp_lifecycle::LifecycleNode::SharedPtr & node, const std::string & base_frame)
+{
+  base_frame_ = base_frame;
+  if (use_collision_detection_) {
+    configureCollisionChecker(node, costmap_topic_, footprint_topic_, transform_tolerance_);
+  }
 }
 
 void Controller::configureCollisionChecker(
