@@ -201,6 +201,12 @@ public:
   nav2_util::CallbackReturn on_shutdown(const rclcpp_lifecycle::State & state) override;
 
   /**
+   * @brief Publish velocity command to the robot
+   * @note publish in x if dock_sideways_ is false, y if true
+   */
+  void publishVelocity(geometry_msgs::msg::Twist & cmd);
+
+  /**
    * @brief Publish zero velocity at terminal condition
    */
   void publishZeroVelocity();
@@ -250,6 +256,8 @@ protected:
   std::string fixed_frame_;
   // Does the robot drive backwards onto the dock? Default is forwards
   bool dock_backwards_;
+  // Whether to dock sideways, i.e. in the y direction. If dock_backwards_ is true, cmd in -y
+  bool dock_sideways_;
   // Whether to rotate to the dock before docking
   bool rotate_to_dock_;
   // The tolerance to the dock's staging pose not requiring navigation

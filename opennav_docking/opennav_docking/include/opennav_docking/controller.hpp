@@ -78,6 +78,8 @@ public:
     const double & angular_distance_to_heading,
     const geometry_msgs::msg::Twist & current_velocity,
     const double & dt);
+  
+  void setBaseFrame(const rclcpp_lifecycle::LifecycleNode::SharedPtr & node, const std::string & base_frame);
 
 protected:
   /**
@@ -129,6 +131,8 @@ protected:
 
   // Used for collision checking
   bool use_collision_detection_;
+  std::string costmap_topic_;
+  std::string footprint_topic_;
   double projection_time_;
   double simulation_time_step_;
   double dock_collision_threshold_;
