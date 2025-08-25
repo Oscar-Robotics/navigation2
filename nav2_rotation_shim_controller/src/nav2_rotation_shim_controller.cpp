@@ -205,18 +205,26 @@ geometry_msgs::msg::TwistStamped RotationShimController::computeVelocityCommands
       double angular_thresh =
         in_rotation_ ? angular_disengage_threshold_ : angular_dist_threshold_;
       if (abs(angular_distance_to_heading) > angular_thresh) {
-        RCLCPP_DEBUG(
-          logger_,
-          "Robot is not within the new path's rough heading, rotating to heading...");
+        double sign = angular_distance_to_heading > 0.0 ? 1.0 : -1.0;
+        double remaining_angular_distance = angular_distance_to_heading - angular_disengage_threshold_ * sign;
+        // RCLCPP_ERROR(
+        //   logger_,
+        //   "Robot is not within the new path's rough heading. distance_to_heading: %f. remaining: %f",
+        //   angular_distance_to_heading, remaining_angular_distance);
         in_rotation_ = true;
-        auto cmd_vel = computeRotateToHeadingCommand(angular_distance_to_heading, pose, velocity);
+        // We need to pass the remaining angular distance
+        auto cmd_vel = computeRotateToHeadingCommand(remaining_angular_distance, pose, velocity);
         last_angular_vel_ = cmd_vel.twist.angular.z;
         return cmd_vel;
       } else {
-        RCLCPP_DEBUG(
+        RCLCPP_ERROR(
           logger_,
           "Robot is at the new path's rough heading, passing to controller");
         path_updated_ = false;
+        // return a zero cmd_vel
+        geometry_msgs::msg::TwistStamped cmd_zero_vel;
+        cmd_zero_vel.header = pose.header;
+        return cmd_zero_vel;
       }
     } catch (const std::runtime_error & e) {
       RCLCPP_DEBUG(
@@ -297,13 +305,29 @@ RotationShimController::computeRotateToHeadingCommand(
 
   geometry_msgs::msg::TwistStamped cmd_vel;
   cmd_vel.header = pose.header;
-  const double sign = angular_distance_to_heading > 0.0 ? 1.0 : -1.0;
-  const double angular_vel = sign * rotate_to_heading_angular_vel_;
-  const double & dt = control_duration_;
-  const double min_feasible_angular_speed = current - max_angular_accel_ * dt;
-  const double max_feasible_angular_speed = current + max_angular_accel_ * dt;
-  cmd_vel.twist.angular.z =
-    std::clamp(angular_vel, min_feasible_angular_speed, max_feasible_angular_speed);
+
+  double sign = angular_distance_to_heading > 0.0 ? 1.0 : -1.0;
+  double dt = control_duration_;
+
+  // Compute the maximum velocity we can use to stop at the goal (v^2 = 2*a*d)
+  double max_vel_to_stop = std::sqrt(2.0 * max_angular_accel_ * std::abs(angular_distance_to_heading * 0.3));
+  if (max_vel_to_stop < std::abs(current)) {
+    cmd_vel.twist.angular.z = sign * max_vel_to_stop;
+  }
+  else
+  {
+    double min_feasible_angular_speed = current - max_angular_accel_ * dt;
+    double max_feasible_angular_speed = current + max_angular_accel_ * dt;
+    cmd_vel.twist.angular.z =
+      std::clamp(sign * rotate_to_heading_angular_vel_, min_feasible_angular_speed, max_feasible_angular_speed);
+  }
+
+  // Clamp acceleration/deceleration
+
+  RCLCPP_ERROR(
+    logger_,
+    "Rotating to heading, distance: %.3f, current: %.3f, cmd: %.3f",
+    angular_distance_to_heading, current, cmd_vel.twist.angular.z);
 
   isCollisionFree(cmd_vel, angular_distance_to_heading, pose);
   return cmd_vel;
