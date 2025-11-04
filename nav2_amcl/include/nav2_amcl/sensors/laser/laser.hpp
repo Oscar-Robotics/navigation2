@@ -68,6 +68,11 @@ public:
    */
   void SetLaserPose(pf_vector_t & laser_pose);
 
+  /*
+   * @brief Get the laser endpoints errors with respect to the map
+   */
+  void getResidualErrors(const pf_vector_t & pose, const LaserData * laser_data, float * residuals);
+
 protected:
   double z_hit_;
   double z_rand_;

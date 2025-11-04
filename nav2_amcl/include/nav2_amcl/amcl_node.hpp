@@ -188,6 +188,8 @@ protected:
     pose_pub_;
   rclcpp_lifecycle::LifecyclePublisher<nav2_msgs::msg::ParticleCloud>::SharedPtr
     particle_cloud_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::LaserScan>::SharedPtr
+    residual_errors_pub_;
   /*
    * @brief Handle with an initial pose estimate is received
    */
@@ -286,6 +288,14 @@ protected:
   rclcpp::Time last_laser_received_ts_;
 
   /*
+   * @brief Get laser data from the laser scan
+   */
+  bool getLaserData(
+    const int & laser_index,
+    const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan,
+    nav2_amcl::LaserData & ldata);
+
+  /*
    * @brief Check if sufficient time has elapsed to get an update
    */
   bool checkElapsedTime(std::chrono::seconds check_interval, rclcpp::Time last_time);
@@ -305,9 +315,9 @@ protected:
   /*
    * @brief Update the PF
    */
-  bool updateFilter(
+  void updateFilter(
     const int & laser_index,
-    const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan,
+    nav2_amcl::LaserData & ldata,
     const pf_vector_t & pose);
   /*
    * @brief Publish particle cloud
@@ -325,6 +335,13 @@ protected:
   void publishAmclPose(
     const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan,
     const std::vector<amcl_hyp_t> & hyps, const int & max_weight_hyp);
+  /*
+    * @brief Get the residual errors of the scan points with respect to the map
+    */
+   void publishResidualErors(
+    const std::vector<amcl_hyp_t> & hyps, const int & max_weight_hyp,
+    nav2_amcl::LaserData & ldata, const int & laser_index,
+    const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan);
   /*
    * @brief Determine TF transformation from map to odom
    */
