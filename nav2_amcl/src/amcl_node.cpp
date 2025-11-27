@@ -94,6 +94,14 @@ AmclNode::AmclNode(const rclcpp::NodeOptions & options)
   add_parameter("do_beamskip", rclcpp::ParameterValue(false));
 
   add_parameter(
+    "occlusion_distance_tolerance", rclcpp::ParameterValue(0.05),
+    "Distance tolerance in meters when checking for occlusions");
+
+  add_parameter(
+    "occlusion_angular_tolerance", rclcpp::ParameterValue(0.02),
+    "Angular tolerance in radians when checking for occlusions");
+
+  add_parameter(
     "global_frame_id", rclcpp::ParameterValue(std::string("map")),
     "The name of the coordinate frame published by the localization system");
 
@@ -274,6 +282,8 @@ AmclNode::on_activate(const rclcpp_lifecycle::State & /*state*/)
   pose_pub_->on_activate();
   particle_cloud_pub_->on_activate();
   residual_errors_pub_->on_activate();
+  occlusion_score_pub_->on_activate();
+  occluded_scan_pub_->on_activate();
 
   first_pose_sent_ = false;
 
@@ -324,6 +334,8 @@ AmclNode::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   pose_pub_->on_deactivate();
   particle_cloud_pub_->on_deactivate();
   residual_errors_pub_->on_deactivate();
+  occlusion_score_pub_->on_deactivate();
+  occluded_scan_pub_->on_deactivate();
 
   // reset dynamic parameter handler
   dyn_params_handler_.reset();
@@ -727,8 +739,9 @@ AmclNode::laserReceived(sensor_msgs::msg::LaserScan::ConstSharedPtr laser_scan)
     std::vector<amcl_hyp_t> hyps;
     int max_weight_hyp = -1;
     if (getMaxWeightHyp(hyps, max_weight_hyps, max_weight_hyp)) {
-      publishAmclPose(laser_scan, hyps, max_weight_hyp);
-      publishResidualErors(hyps, max_weight_hyp, ldata, laser_index, laser_scan);
+      publishAmclPose(laser_scan, max_weight_hyps);
+      publishResidualErors(max_weight_hyps, ldata, laser_index, laser_scan);
+      publishOcclusionScore(max_weight_hyps, ldata, laser_index, laser_scan);
       calculateMaptoOdomTransform(laser_scan, hyps, max_weight_hyp);
 
       if (tf_broadcast_ == true) {
@@ -946,8 +959,7 @@ AmclNode::getMaxWeightHyp(
 
 void
 AmclNode::publishAmclPose(
-  const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan,
-  const std::vector<amcl_hyp_t> & hyps, const int & max_weight_hyp)
+  const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan, const amcl_hyp_t & max_hyp)
 {
   // If initial pose is not known, AMCL does not know the current pose
   if (!initial_pose_is_known_) {
@@ -965,16 +977,16 @@ AmclNode::publishAmclPose(
   p->header.frame_id = global_frame_id_;
   p->header.stamp = laser_scan->header.stamp;
   // Copy in the pose
-  p->pose.pose.position.x = hyps[max_weight_hyp].pf_pose_mean.v[0];
-  p->pose.pose.position.y = hyps[max_weight_hyp].pf_pose_mean.v[1];
-  p->pose.pose.orientation = orientationAroundZAxis(hyps[max_weight_hyp].pf_pose_mean.v[2]);
+  p->pose.pose.position.x = max_hyp.pf_pose_mean.v[0];
+  p->pose.pose.position.y = max_hyp.pf_pose_mean.v[1];
+  p->pose.pose.orientation = orientationAroundZAxis(max_hyp.pf_pose_mean.v[2]);
   // Copy in the covariance, converting from 3-D to 6-D
   pf_sample_set_t * set = pf_->sets + pf_->current_set;
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2; j++) {
       // Report the overall filter covariance, rather than the
       // covariance for the highest-weight cluster
-      // p->covariance[6*i+j] = hyps[max_weight_hyp].pf_pose_cov.m[i][j];
+      // p->covariance[6*i+j] = max_hyp.pf_pose_cov.m[i][j];
       p->pose.covariance[6 * i + j] = set->cov.m[i][j];
     }
   }
@@ -997,21 +1009,20 @@ AmclNode::publishAmclPose(
 
   RCLCPP_DEBUG(
     get_logger(), "New pose: %6.3f %6.3f %6.3f",
-    hyps[max_weight_hyp].pf_pose_mean.v[0],
-    hyps[max_weight_hyp].pf_pose_mean.v[1],
-    hyps[max_weight_hyp].pf_pose_mean.v[2]);
+    max_hyp.pf_pose_mean.v[0],
+    max_hyp.pf_pose_mean.v[1],
+    max_hyp.pf_pose_mean.v[2]);
 }
 
 void
 AmclNode::publishResidualErors(
-  const std::vector<amcl_hyp_t> & hyps, const int & max_weight_hyp,
-  nav2_amcl::LaserData & ldata, const int & laser_index,
+  const amcl_hyp_t & max_hyp, nav2_amcl::LaserData & ldata, const int & laser_index,
   const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan)
 {
   pf_vector_t pose;
-  pose.v[0] = hyps[max_weight_hyp].pf_pose_mean.v[0];
-  pose.v[1] = hyps[max_weight_hyp].pf_pose_mean.v[1];
-  pose.v[2] = hyps[max_weight_hyp].pf_pose_mean.v[2];
+  pose.v[0] = max_hyp.pf_pose_mean.v[0];
+  pose.v[1] = max_hyp.pf_pose_mean.v[1];
+  pose.v[2] = max_hyp.pf_pose_mean.v[2];
 
   float * residual_errors = new float[ldata.range_count];
 
@@ -1025,6 +1036,39 @@ AmclNode::publishResidualErors(
   residual_scan.intensities = residual_errors_vector;
 
   residual_errors_pub_->publish(std::move(residual_scan));
+}
+
+void
+AmclNode::publishOcclusionScore(
+  const amcl_hyp_t & max_hyp, nav2_amcl::LaserData & ldata, const int & laser_index,
+  const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan)
+{
+  pf_vector_t pose;
+  pose.v[0] = max_hyp.pf_pose_mean.v[0];
+  pose.v[1] = max_hyp.pf_pose_mean.v[1];
+  pose.v[2] = max_hyp.pf_pose_mean.v[2];
+  bool * occlusions = new bool[ldata.range_count];
+  lasers_[laser_index]->getOcclusions(
+    pose, &ldata, occlusion_distance_tolerance_, occlusion_angular_tolerance_, occlusions);
+
+  int occluded_beams = 0;
+  sensor_msgs::msg::LaserScan occlusion_scan = *laser_scan.get();
+  for (int i = 0; i < ldata.range_count; i++) {
+    if (occlusions[i]) {
+      occluded_beams++;
+    } else {
+      occlusion_scan.ranges[i] = std::numeric_limits<float>::quiet_NaN();
+    }
+  }
+  delete[] occlusions;
+
+  float occlusion_score = static_cast<float>(occluded_beams) / static_cast<float>(ldata.range_count);
+
+  auto occlusion_msg = std::make_unique<std_msgs::msg::Float32>();
+  occlusion_msg->data = occlusion_score;
+
+  occlusion_score_pub_->publish(std::move(occlusion_msg));
+  occluded_scan_pub_->publish(std::move(occlusion_scan));
 }
 
 void
@@ -1109,6 +1153,8 @@ AmclNode::initParameters()
   get_parameter("beam_skip_error_threshold", beam_skip_error_threshold_);
   get_parameter("beam_skip_threshold", beam_skip_threshold_);
   get_parameter("do_beamskip", do_beamskip_);
+  get_parameter("occlusion_distance_tolerance", occlusion_distance_tolerance_);
+  get_parameter("occlusion_angular_tolerance", occlusion_angular_tolerance_);
   get_parameter("global_frame_id", global_frame_id_);
   get_parameter("lambda_short", lambda_short_);
   get_parameter("laser_likelihood_max_dist", laser_likelihood_max_dist_);
@@ -1589,6 +1635,14 @@ AmclNode::initPubSub()
 
   residual_errors_pub_ = create_publisher<sensor_msgs::msg::LaserScan>(
     "residual_errors",
+    rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
+
+  occlusion_score_pub_ = create_publisher<std_msgs::msg::Float32>(
+    "occlusion_score",
+    rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
+
+  occluded_scan_pub_ = create_publisher<sensor_msgs::msg::LaserScan>(
+    "occluded_scan",
     rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
 
   initial_pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
