@@ -107,4 +107,42 @@ Laser::getResidualErors(const pf_vector_t & pose, const LaserData * laser_data, 
   }
 }
 
+void
+Laser::getOcclusions(const pf_vector_t & pose, const LaserData * laser_data, float dist_tol, float angular_tol, bool * occlusions)
+{
+  pf_vector_t updated_pose = pf_vector_coord_add(laser_pose_, pose);
+
+  for (int i = 0; i < laser_data->range_count; i++) {
+    double obs_range = laser_data->ranges[i][0];
+    double obs_bearing = laser_data->ranges[i][1];
+    double bearing [] = {obs_bearing - angular_tol, obs_bearing, obs_bearing + angular_tol};
+    double max_map_range = std::numeric_limits<double>::max();
+
+    for (int b = 0; b < 3; b++) {
+      if (obs_range >= laser_data->range_max) {
+        continue;
+      }
+
+      // Check for NaN
+      if (obs_range != obs_range) {
+        continue;
+      }
+
+      double map_range = map_calc_range(
+        map_, updated_pose.v[0], updated_pose.v[1],
+        updated_pose.v[2] + bearing[b], laser_data->range_max);
+      if (map_range > max_map_range) {
+        max_map_range = map_range;
+      }
+    }
+
+    // If occlusion is detected, count it
+    if (max_map_range < obs_range - dist_tol) {
+      occlusions[i] = true;
+    } else {
+      occlusions[i] = false;
+    }
+  }
+}
+
 }  // namespace nav2_amcl

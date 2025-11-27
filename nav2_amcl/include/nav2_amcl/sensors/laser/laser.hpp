@@ -67,6 +67,12 @@ public:
    */
   void getResidualErors(const pf_vector_t & pose, const LaserData * laser_data, float * residuals);
 
+  /*
+  * @brief Get the occluded scans in the laser data
+  */
+  void getOcclusions(
+    const pf_vector_t & pose, const LaserData * laser_data, float dist_tol, float angular_tol, bool * occlusions);
+
 protected:
   double z_hit_;
   double z_rand_;

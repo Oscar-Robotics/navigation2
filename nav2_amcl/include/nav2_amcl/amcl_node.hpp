@@ -38,6 +38,7 @@
 #include "nav2_msgs/srv/set_initial_pose.hpp"
 #include "nav_msgs/srv/set_map.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "std_msgs/msg/float32.hpp"
 #include "std_srvs/srv/empty.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
@@ -190,6 +191,10 @@ protected:
     particle_cloud_pub_;
   rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::LaserScan>::SharedPtr
     residual_errors_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float32>::SharedPtr
+    occlusion_score_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::LaserScan>::SharedPtr
+    occluded_scan_pub_;
   /*
    * @brief Handle with an initial pose estimate is received
    */
@@ -333,14 +338,17 @@ protected:
    * @brief Publish robot pose in map frame from AMCL
    */
   void publishAmclPose(
-    const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan,
-    const std::vector<amcl_hyp_t> & hyps, const int & max_weight_hyp);
+    const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan, const amcl_hyp_t & max_hyp);
   /*
-    * @brief Get the residual errors of the scan points with respect to the map
-    */
-   void publishResidualErors(
-    const std::vector<amcl_hyp_t> & hyps, const int & max_weight_hyp,
-    nav2_amcl::LaserData & ldata, const int & laser_index,
+   * @brief Get the residual errors of the scan points with respect to the map
+   */
+  void publishResidualErors(
+    const amcl_hyp_t & max_hyp, nav2_amcl::LaserData & ldata, const int & laser_index,
+    const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan);
+  /*
+   * @brief Publish the occlusion score of the scan in the map
+   */
+  void publishOcclusionScore(const amcl_hyp_t & max_hyp, nav2_amcl::LaserData & ldata, const int & laser_index,
     const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan);
   /*
    * @brief Determine TF transformation from map to odom
@@ -383,6 +391,8 @@ protected:
   double beam_skip_error_threshold_;
   double beam_skip_threshold_;
   bool do_beamskip_;
+  double occlusion_distance_tolerance_;
+  double occlusion_angular_tolerance_;
   std::string global_frame_id_;
   double lambda_short_;
   double laser_likelihood_max_dist_;
