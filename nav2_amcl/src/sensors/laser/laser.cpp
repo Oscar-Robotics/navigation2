@@ -116,10 +116,10 @@ Laser::getOcclusions(const pf_vector_t & pose, const LaserData * laser_data, flo
     double obs_range = laser_data->ranges[i][0];
     double obs_bearing = laser_data->ranges[i][1];
     double bearing [] = {obs_bearing - angular_tol, obs_bearing, obs_bearing + angular_tol};
-    double max_map_range = std::numeric_limits<double>::max();
+    double max_map_range = std::numeric_limits<double>::min();
 
     for (int b = 0; b < 3; b++) {
-      if (obs_range >= laser_data->range_max) {
+      if (obs_range > laser_data->range_max) {
         continue;
       }
 
