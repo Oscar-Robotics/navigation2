@@ -162,6 +162,11 @@ AmclNode::AmclNode(const rclcpp::NodeOptions & options)
     "Yaw of the initial robot pose in the map frame");
 
   add_parameter(
+    "initial_pose.force_update", rclcpp::ParameterValue(false),
+    "If true, update filter on initialization with initial pose"
+  );
+
+  add_parameter(
     "max_beams", rclcpp::ParameterValue(60),
     "How many evenly-spaced beams in each scan to be used when updating the filter");
 
@@ -304,6 +309,8 @@ AmclNode::on_activate(const rclcpp_lifecycle::State & /*state*/)
     msg->pose.covariance[6 * 0 + 0] = initial_cov_x_;
     msg->pose.covariance[6 * 1 + 1] = initial_cov_y_;
     msg->pose.covariance[6 * 5 + 5] = initial_cov_yaw_;
+
+    force_update_ = initial_pose_force_update_;
 
     initialPoseReceived(msg);
   } else if (init_pose_received_on_inactive) {
@@ -1169,6 +1176,7 @@ AmclNode::initParameters()
   get_parameter("initial_cov.x", initial_cov_x_);
   get_parameter("initial_cov.y", initial_cov_y_);
   get_parameter("initial_cov.yaw", initial_cov_yaw_);
+  get_parameter("initial_pose.force_update", initial_pose_force_update_);
   get_parameter("max_beams", max_beams_);
   get_parameter("max_particles", max_particles_);
   get_parameter("min_particles", min_particles_);

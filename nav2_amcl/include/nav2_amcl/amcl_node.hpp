@@ -376,6 +376,7 @@ protected:
   double initial_cov_x_;
   double initial_cov_y_;
   double initial_cov_yaw_;
+  bool initial_pose_force_update_{false};
 
   /*
    * @brief Get ROS parameters for node
