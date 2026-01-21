@@ -271,6 +271,10 @@ void DockingServer::dockRobot()
     // Send robot to its staging pose
     publishDockingFeedback(DockRobot::Feedback::NAV_TO_STAGING_POSE);
     auto initial_staging_pose = dock->getStagingPose();
+    if (dock_backwards_) {
+      initial_staging_pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(
+        tf2::getYaw(initial_staging_pose.pose.orientation) + M_PI);
+    }
     if (dock_sideways_)
     {
       initial_staging_pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(
@@ -692,6 +696,10 @@ void DockingServer::undockRobot()
     geometry_msgs::msg::PoseStamped staging_pose =
       dock->getStagingPose(dock_pose.pose, dock_pose.header.frame_id);
 
+    if (dock_backwards_) {
+      staging_pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(
+        tf2::getYaw(staging_pose.pose.orientation) + M_PI);
+    }
     // If we performed a rotation before docking backward, we must rotate the staging pose
     // to match the robot orientation
     if (rotate_to_dock_) {
