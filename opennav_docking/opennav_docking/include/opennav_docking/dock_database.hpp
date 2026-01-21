@@ -95,6 +95,11 @@ public:
    */
   unsigned int plugin_size() const;
 
+  /**
+   * @brief Reloads the dock plugins
+   */
+  void reloadDockPlugins(std::shared_ptr<tf2_ros::Buffer> tf);
+
 protected:
   /**
    * @brief Populate database of dock type plugins

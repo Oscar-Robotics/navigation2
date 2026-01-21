@@ -836,6 +836,7 @@ DockingServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
         base_frame_ = parameter.as_string();
         auto node = shared_from_this();
         controller_->setBaseFrame(node, base_frame_);
+        // dock_db_->reloadDockPlugins(tf2_buffer_);
       } else if (name == "fixed_frame") {
         fixed_frame_ = parameter.as_string();
       }
@@ -846,6 +847,9 @@ DockingServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "dock_sideways") {
         dock_sideways_ = parameter.as_bool();
+      }
+      if (name == "dock_backwards") {
+        dock_backwards_ = parameter.as_bool();
       }
     }
   }

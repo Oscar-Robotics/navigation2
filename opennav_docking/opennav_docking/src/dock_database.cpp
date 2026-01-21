@@ -222,6 +222,13 @@ bool DockDatabase::getDockInstances(const rclcpp_lifecycle::LifecycleNode::Share
   return true;
 }
 
+void DockDatabase::reloadDockPlugins(std::shared_ptr<tf2_ros::Buffer> tf)
+{
+  dock_plugins_.clear();
+  auto node = node_.lock();
+  getDockPlugins(node, tf);
+}
+
 unsigned int DockDatabase::plugin_size() const
 {
   return dock_plugins_.size();

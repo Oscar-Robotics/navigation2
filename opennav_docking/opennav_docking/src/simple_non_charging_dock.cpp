@@ -232,6 +232,7 @@ bool SimpleNonChargingDock::isDocked()
   // Find base pose in target frame
   geometry_msgs::msg::PoseStamped base_pose;
   base_pose.header.stamp = rclcpp::Time(0);
+  node_->get_parameter("base_frame", base_frame_id_);  // Get server base frame ID
   base_pose.header.frame_id = base_frame_id_;
   base_pose.pose.orientation.w = 1.0;
   try {
