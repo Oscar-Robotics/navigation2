@@ -36,8 +36,11 @@ DockingServer::DockingServer(const rclcpp::NodeOptions & options)
   declare_parameter("rotate_to_dock_timeout", 10.0);
   declare_parameter("undock_linear_tolerance", 0.05);
   declare_parameter("undock_angular_tolerance", 0.05);
+  declare_parameter("overshoot_distance_threshold", 0.05);
   declare_parameter("max_retries", 3);
   declare_parameter("base_frame", "base_link");
+  declare_parameter("control_frame", "base_link");
+  declare_parameter("control_sideways_frame", "side_approach");
   declare_parameter("fixed_frame", "odom");
   declare_parameter("dock_backwards", false);
   declare_parameter("dock_sideways", false);
@@ -60,8 +63,11 @@ DockingServer::on_configure(const rclcpp_lifecycle::State & state)
   get_parameter("rotate_to_dock_timeout", rotate_to_dock_timeout_);
   get_parameter("undock_linear_tolerance", undock_linear_tolerance_);
   get_parameter("undock_angular_tolerance", undock_angular_tolerance_);
+  get_parameter("overshoot_distance_threshold", overshoot_distance_threshold_);
   get_parameter("max_retries", max_retries_);
   get_parameter("base_frame", base_frame_);
+  get_parameter("control_frame", control_frame_);
+  get_parameter("control_sideways_frame", control_sideways_frame_);
   get_parameter("fixed_frame", fixed_frame_);
   get_parameter("dock_backwards", dock_backwards_);
   get_parameter("dock_sideways", dock_sideways_);
@@ -106,7 +112,7 @@ DockingServer::on_configure(const rclcpp_lifecycle::State & state)
 
   // Create composed utilities
   mutex_ = std::make_shared<std::mutex>();
-  controller_ = std::make_unique<Controller>(node, tf2_buffer_, fixed_frame_, base_frame_);
+  controller_ = std::make_unique<Controller>(node, tf2_buffer_, fixed_frame_, control_frame_);
   navigator_ = std::make_unique<Navigator>(node);
   dock_db_ = std::make_unique<DockDatabase>(mutex_);
   if (!dock_db_->initialize(node, tf2_buffer_)) {
@@ -306,6 +312,10 @@ void DockingServer::dockRobot()
       staging_pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(
         tf2::getYaw(staging_pose.pose.orientation) + M_PI);
     }
+    if (dock_backwards_) {
+      staging_pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(
+        tf2::getYaw(staging_pose.pose.orientation) + M_PI);
+    }
 
     // Docking control loop: while not docked, run controller
     rclcpp::Time dock_contact_time;
@@ -459,9 +469,7 @@ void DockingServer::rotateToDock(const geometry_msgs::msg::PoseStamped & dock_po
     geometry_msgs::msg::Twist current_vel;
     current_vel.angular.z = odom_sub_->getTwist().theta;
 
-    auto command = controller_->computeRotateToHeadingCommand(
-      angular_distance_to_heading, current_vel, dt);
-
+    auto command = controller_->computeRotateToHeadingCommand(angular_distance_to_heading, current_vel, dt);
     publishVelocity(command);
 
     if (this->now() - start > timeout) {
@@ -500,6 +508,15 @@ bool DockingServer::approachDock(Dock * dock, geometry_msgs::msg::PoseStamped & 
     // Transform target_pose into base_link frame
     geometry_msgs::msg::PoseStamped target_pose = dock_pose;
     target_pose.header.stamp = rclcpp::Time(0);
+    
+    // If we went past the dock, stop navigation and report failure
+    auto dock_pose_in_base_frame = dock_pose;
+    dock_pose_in_base_frame.header.stamp = rclcpp::Time(0);
+    tf2_buffer_->transform(dock_pose_in_base_frame, dock_pose_in_base_frame, base_frame_);
+    bool went_past_dock = dock_pose_in_base_frame.pose.position.x * (dock_backwards_ ? 1.0 : -1.0) > overshoot_distance_threshold_;
+    if (went_past_dock) {
+      throw opennav_docking_core::FailedToControl("Went past the dock");
+    }
 
     // The control law can get jittery when close to the end when atan2's can explode.
     // Thus, we backward project the controller's target pose a little bit after the
@@ -625,6 +642,16 @@ bool DockingServer::getCommandToPose(
     return true;
   }
 
+  // If we went past the target pose, stop navigation
+  tf2::Transform target_tf, robot_tf;
+  tf2::fromMsg(pose.pose, target_tf);
+  tf2::fromMsg(robot_pose.pose, robot_tf);
+  auto robot_in_target_pose = target_tf.inverse() * robot_tf;
+  bool went_past_target = robot_in_target_pose.getOrigin().x() * (backward ? -1.0 : 1.0) > overshoot_distance_threshold_;
+  if (went_past_target) {
+    return true;
+  }
+
   // Transform target_pose into base_link frame
   geometry_msgs::msg::PoseStamped target_pose = pose;
   target_pose.header.stamp = rclcpp::Time(0);
@@ -632,7 +659,7 @@ bool DockingServer::getCommandToPose(
   // Thus, we backward project the controller's target pose a little bit after the
   // dock so that the robot never gets to the end of the spiral before its in contact
   // with the dock to stop the docking procedure.
-  const double backward_projection = 0.5;
+  const double backward_projection = 0.25 * (backward ? -1.0 : 1.0);
   const double target_yaw = tf2::getYaw(target_pose.pose.orientation);
   target_pose.pose.position.x += cos(target_yaw) * backward_projection;
   target_pose.pose.position.y += sin(target_yaw) * backward_projection;
@@ -850,8 +877,6 @@ DockingServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
     } else if (type == ParameterType::PARAMETER_STRING) {
       if (name == "base_frame") {
         base_frame_ = parameter.as_string();
-        auto node = shared_from_this();
-        controller_->setBaseFrame(node, base_frame_);
         // dock_db_->reloadDockPlugins(tf2_buffer_);
       } else if (name == "fixed_frame") {
         fixed_frame_ = parameter.as_string();
@@ -863,6 +888,7 @@ DockingServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "dock_sideways") {
         dock_sideways_ = parameter.as_bool();
+        controller_->setBaseFrame(shared_from_this(), dock_sideways_ ? control_sideways_frame_ : control_frame_);
       }
       if (name == "dock_backwards") {
         dock_backwards_ = parameter.as_bool();
