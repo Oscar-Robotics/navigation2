@@ -1362,6 +1362,12 @@ AmclNode::dynamicParametersCallback(
       } else if (param_name == "laser_min_range") {
         laser_min_range_ = parameter.as_double();
         reinit_laser = true;
+      } else if (param_name == "occlusion_max_distance") {
+        occlusion_max_distance_ = parameter.as_double();
+      } else if (param_name == "occlusion_distance_tolerance") {
+        occlusion_distance_tolerance_ = parameter.as_double();
+      } else if (param_name == "occlusion_angular_tolerance") {
+        occlusion_angular_tolerance_ = parameter.as_double();
       } else if (param_name == "pf_err") {
         pf_err_ = parameter.as_double();
         reinit_pf = true;
