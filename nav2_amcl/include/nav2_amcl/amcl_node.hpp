@@ -392,6 +392,7 @@ protected:
   double beam_skip_error_threshold_;
   double beam_skip_threshold_;
   bool do_beamskip_;
+  double occlusion_max_distance_;
   double occlusion_distance_tolerance_;
   double occlusion_angular_tolerance_;
   std::string global_frame_id_;
