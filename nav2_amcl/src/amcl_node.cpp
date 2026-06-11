@@ -1078,7 +1078,6 @@ AmclNode::publishOcclusionScore(
   }
   delete[] occlusions;
 
-  float occlusion_score = static_cast<float>(occluded_beams) / static_cast<float>(occluded_beams + valid_beams);
   const int considered_beams = occluded_beams + valid_beams;
   float occlusion_score =
     considered_beams > 0 ? static_cast<float>(occluded_beams) / static_cast<float>(considered_beams) : 0.0f;
