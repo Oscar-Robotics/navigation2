@@ -1079,6 +1079,9 @@ AmclNode::publishOcclusionScore(
   delete[] occlusions;
 
   float occlusion_score = static_cast<float>(occluded_beams) / static_cast<float>(occluded_beams + valid_beams);
+  const int considered_beams = occluded_beams + valid_beams;
+  float occlusion_score =
+    considered_beams > 0 ? static_cast<float>(occluded_beams) / static_cast<float>(considered_beams) : 0.0f;
 
   auto occlusion_msg = std::make_unique<std_msgs::msg::Float32>();
   occlusion_msg->data = occlusion_score;
@@ -1364,6 +1367,9 @@ AmclNode::dynamicParametersCallback(
         reinit_laser = true;
       } else if (param_name == "occlusion_max_distance") {
         occlusion_max_distance_ = parameter.as_double();
+        if (occlusion_max_distance_ < 0.0) {
+           occlusion_max_distance_ = std::numeric_limits<double>::infinity();
+        }
       } else if (param_name == "occlusion_distance_tolerance") {
         occlusion_distance_tolerance_ = parameter.as_double();
       } else if (param_name == "occlusion_angular_tolerance") {

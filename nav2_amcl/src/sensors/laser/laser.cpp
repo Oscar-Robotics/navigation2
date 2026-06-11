@@ -124,7 +124,7 @@ Laser::getOcclusions(
     double bearing [] = {obs_bearing - angular_tol, obs_bearing, obs_bearing + angular_tol};
     double max_map_range = std::numeric_limits<double>::min();
 
-    if (obs_range > max_dist || obs_range != obs_range) {
+    if (obs_range > max_dist || obs_range != obs_range || !std::isfinite(obs_range)) {
       occlusions[i] = -1;
       continue;
     }
