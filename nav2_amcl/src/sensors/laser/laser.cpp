@@ -108,7 +108,13 @@ Laser::getResidualErors(const pf_vector_t & pose, const LaserData * laser_data, 
 }
 
 void
-Laser::getOcclusions(const pf_vector_t & pose, const LaserData * laser_data, float dist_tol, float angular_tol, bool * occlusions)
+Laser::getOcclusions(
+  const pf_vector_t & pose,
+  const LaserData * laser_data,
+  float max_dist,
+  float dist_tol,
+  float angular_tol,
+  int8_t * occlusions)
 {
   pf_vector_t updated_pose = pf_vector_coord_add(laser_pose_, pose);
 
@@ -117,6 +123,11 @@ Laser::getOcclusions(const pf_vector_t & pose, const LaserData * laser_data, flo
     double obs_bearing = laser_data->ranges[i][1];
     double bearing [] = {obs_bearing - angular_tol, obs_bearing, obs_bearing + angular_tol};
     double max_map_range = std::numeric_limits<double>::min();
+
+    if (obs_range > max_dist || obs_range != obs_range || !std::isfinite(obs_range)) {
+      occlusions[i] = -1;
+      continue;
+    }
 
     for (int b = 0; b < 3; b++) {
       if (obs_range > laser_data->range_max) {
@@ -138,9 +149,9 @@ Laser::getOcclusions(const pf_vector_t & pose, const LaserData * laser_data, flo
 
     // If occlusion is detected, count it
     if (max_map_range < obs_range - dist_tol) {
-      occlusions[i] = true;
+      occlusions[i] = 1;
     } else {
-      occlusions[i] = false;
+      occlusions[i] = 0;
     }
   }
 }

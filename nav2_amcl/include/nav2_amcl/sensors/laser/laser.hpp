@@ -68,10 +68,21 @@ public:
   void getResidualErors(const pf_vector_t & pose, const LaserData * laser_data, float * residuals);
 
   /*
-  * @brief Get the occluded scans in the laser data
+   * @brief Get the occluded scans in the laser data, occlusion data is encoded as: {-1 = invalid; 0 = not occluded; 1 = occluded}
+   * @param pose Pose of the laser
+   * @param laser_data Laser data to use
+   * @param max_dist Maximum distance to consider for occlusion
+   * @param dist_tol Distance tolerance to consider for occlusion
+   * @param angular_tol Angular tolerance to consider for occlusion
+   * @param occlusions Output array of occlusion data
   */
   void getOcclusions(
-    const pf_vector_t & pose, const LaserData * laser_data, float dist_tol, float angular_tol, bool * occlusions);
+    const pf_vector_t & pose,
+    const LaserData * laser_data,
+    float max_dist,
+    float dist_tol,
+    float angular_tol, 
+    int8_t * occlusions);
 
 protected:
   double z_hit_;

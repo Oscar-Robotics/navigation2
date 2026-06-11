@@ -94,6 +94,11 @@ AmclNode::AmclNode(const rclcpp::NodeOptions & options)
   add_parameter("do_beamskip", rclcpp::ParameterValue(false));
 
   add_parameter(
+    "occlusion_max_distance", rclcpp::ParameterValue(-1.0),
+    "Maximum distance to check for occlusions, in meters. Set to -1 to remove limit"
+  );
+  
+  add_parameter(
     "occlusion_distance_tolerance", rclcpp::ParameterValue(0.05),
     "Distance tolerance in meters when checking for occlusions");
 
@@ -1054,22 +1059,29 @@ AmclNode::publishOcclusionScore(
   pose.v[0] = max_hyp.pf_pose_mean.v[0];
   pose.v[1] = max_hyp.pf_pose_mean.v[1];
   pose.v[2] = max_hyp.pf_pose_mean.v[2];
-  bool * occlusions = new bool[ldata.range_count];
+  int8_t * occlusions = new int8_t[ldata.range_count];
   lasers_[laser_index]->getOcclusions(
-    pose, &ldata, occlusion_distance_tolerance_, occlusion_angular_tolerance_, occlusions);
+    pose, &ldata, occlusion_max_distance_, occlusion_distance_tolerance_, occlusion_angular_tolerance_, occlusions);
 
   int occluded_beams = 0;
+  int valid_beams = 0;
   sensor_msgs::msg::LaserScan occlusion_scan = *laser_scan.get();
   for (int i = 0; i < ldata.range_count; i++) {
-    if (occlusions[i]) {
+    if (occlusions[i] == 1) {
       occluded_beams++;
-    } else {
-      occlusion_scan.ranges[i] = std::numeric_limits<float>::quiet_NaN();
+      continue;
     }
+    if (occlusions[i] == 0) {
+      valid_beams++;
+    }
+    occlusion_scan.ranges[i] = std::numeric_limits<float>::quiet_NaN();
   }
   delete[] occlusions;
 
-  float occlusion_score = static_cast<float>(occluded_beams) / static_cast<float>(ldata.range_count);
+  float occlusion_score = static_cast<float>(occluded_beams) / static_cast<float>(occluded_beams + valid_beams);
+  const int considered_beams = occluded_beams + valid_beams;
+  float occlusion_score =
+    considered_beams > 0 ? static_cast<float>(occluded_beams) / static_cast<float>(considered_beams) : 0.0f;
 
   auto occlusion_msg = std::make_unique<std_msgs::msg::Float32>();
   occlusion_msg->data = occlusion_score;
@@ -1160,6 +1172,7 @@ AmclNode::initParameters()
   get_parameter("beam_skip_error_threshold", beam_skip_error_threshold_);
   get_parameter("beam_skip_threshold", beam_skip_threshold_);
   get_parameter("do_beamskip", do_beamskip_);
+  get_parameter("occlusion_max_distance", occlusion_max_distance_);
   get_parameter("occlusion_distance_tolerance", occlusion_distance_tolerance_);
   get_parameter("occlusion_angular_tolerance", occlusion_angular_tolerance_);
   get_parameter("global_frame_id", global_frame_id_);
@@ -1244,6 +1257,10 @@ AmclNode::initParameters()
       get_logger(), "You've set resample_interval to be zero or negative,"
       " this isn't allowed so it will be set to default value to 1.");
     resample_interval_ = 1;
+  }
+
+  if (occlusion_max_distance_ < 0) {
+    occlusion_max_distance_ = std::numeric_limits<double>::infinity();
   }
 
   if (always_reset_initial_pose_) {
@@ -1348,6 +1365,15 @@ AmclNode::dynamicParametersCallback(
       } else if (param_name == "laser_min_range") {
         laser_min_range_ = parameter.as_double();
         reinit_laser = true;
+      } else if (param_name == "occlusion_max_distance") {
+        occlusion_max_distance_ = parameter.as_double();
+        if (occlusion_max_distance_ < 0.0) {
+           occlusion_max_distance_ = std::numeric_limits<double>::infinity();
+        }
+      } else if (param_name == "occlusion_distance_tolerance") {
+        occlusion_distance_tolerance_ = parameter.as_double();
+      } else if (param_name == "occlusion_angular_tolerance") {
+        occlusion_angular_tolerance_ = parameter.as_double();
       } else if (param_name == "pf_err") {
         pf_err_ = parameter.as_double();
         reinit_pf = true;
