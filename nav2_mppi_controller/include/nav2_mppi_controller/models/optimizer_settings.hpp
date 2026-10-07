@@ -32,6 +32,9 @@ struct OptimizerSettings
   models::SamplingStd sampling_std{0.0f, 0.0f, 0.0f};
   bool couple_vx_vy_limits{false};
   float model_dt{0.0f};
+  float model_delay_vx{0.0f};
+  float model_delay_vy{0.0f};
+  float model_delay_wz{0.0f};
   float temperature{0.0f};
   float gamma{0.0f};
   unsigned int batch_size{0u};

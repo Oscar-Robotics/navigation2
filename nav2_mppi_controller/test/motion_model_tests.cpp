@@ -255,3 +255,101 @@ TEST(MotionModelTests, AckermannReversingTest)
   // Check it cleanly destructs
   model.reset();
 }
+
+static models::ControlConstraints unboundedConstraints()
+{
+  return {100, -100, 100, 100, 1000, -1000, 1000, 1000};
+}
+
+static bool colIsConstant(const xt::xtensor<float, 2> & velocities, unsigned int col, float value)
+{
+  return xt::allclose(xt::view(velocities, xt::all(), col), value);
+}
+
+TEST(MotionModelTests, DelayReplayAllAxes)
+{
+  // Omni model exercises all three axes (vx, vy, wz) in a single test.
+  // delay_vx = 0.10s -> offset 2; delay_wz = 0.15s -> offset 3.
+  models::State state;
+  state.reset(8, 20);
+
+  OmniMotionModel model;
+
+  // Set model_dt, model_delay_vx, model_delay_vy, model_delay_wz = 0.05f, 0.10f, 0.10f, 0.15f;
+  model.initialize(unboundedConstraints(), 0.05f, 0.10f, 0.10f, 0.15f);
+
+  // Ring-buffer size of vx/vy/wz = 2/2/3 steps
+  // After 3 pushes per axis the rings hold the most-recent 2/2/3 values.
+  model.pushCommandHistory(1.0f, 2.0f, 3.0f);
+  model.pushCommandHistory(5.0f, 6.0f, 7.0f);
+  model.pushCommandHistory(9.0f, 8.0f, 4.0f);
+
+  model.predict(state);
+
+  // predict() populates starting at column 1; column 0 holds the current
+  // measurement / last command set by the optimizer before predict() runs.
+  EXPECT_TRUE(colIsConstant(state.vx, 0, 0.0f));
+  EXPECT_TRUE(colIsConstant(state.vy, 0, 0.0f));
+  EXPECT_TRUE(colIsConstant(state.wz, 0, 0.0f));
+
+  EXPECT_TRUE(colIsConstant(state.vx, 1, 9.0f));
+  EXPECT_TRUE(colIsConstant(state.vy, 1, 8.0f));
+  EXPECT_TRUE(colIsConstant(state.wz, 1, 7.0f));
+
+  // The wz buffer has a size of 3, so check the last value as well
+  EXPECT_TRUE(colIsConstant(state.wz, 2, 4.0f));
+
+  // Outside of the delay window are still zero
+  EXPECT_TRUE(colIsConstant(state.vx, 2, 0.0f));
+  EXPECT_TRUE(colIsConstant(state.vy, 2, 0.0f));
+  EXPECT_TRUE(colIsConstant(state.vx, 3, 0.0f));
+  EXPECT_TRUE(colIsConstant(state.vy, 3, 0.0f));
+  EXPECT_TRUE(colIsConstant(state.wz, 3, 0.0f));
+}
+
+TEST(MotionModelTests, DelayVyIgnoredOnDiffDrive)
+{
+  models::State state;
+  state.reset(8, 20);
+
+  DiffDriveMotionModel model;
+  model.initialize(unboundedConstraints(), 0.05f, 0.0f, 0.10f, 0.0f);
+  model.pushCommandHistory(0.0f, 99.0f, 0.0f);
+  model.pushCommandHistory(0.0f, 99.0f, 0.0f);
+
+  EXPECT_NO_THROW(model.predict(state));
+  EXPECT_EQ(state.vy, xt::zeros<float>({8, 20}));
+}
+
+TEST(MotionModelTests, DelayClearCommandHistory)
+{
+  models::State state;
+  state.reset(8, 20);
+
+  DiffDriveMotionModel model;
+  model.initialize(unboundedConstraints(), 0.05f, 0.10f, 0.0f, 0.15f);
+  model.pushCommandHistory(7.0f, 0.0f, 7.0f);
+  model.clearCommandHistory();
+  model.predict(state);
+
+  EXPECT_TRUE(colIsConstant(state.vx, 1, 0.0f));
+  EXPECT_TRUE(colIsConstant(state.wz, 1, 0.0f));
+  EXPECT_TRUE(colIsConstant(state.wz, 2, 0.0f));
+}
+
+TEST(MotionModelTests, DelayZeroSkipsShift)
+{
+  models::State state;
+  state.reset(8, 20);
+
+  // Set non-zero velocity and check that it remains unchanged after predict()
+  xt::view(state.vx, xt::all(), 0) = 2.0f;
+  state.cvx.fill(2.0f);
+
+  DiffDriveMotionModel model;
+  model.initialize(unboundedConstraints(), 0.05f, 0.0f, 0.0f, 0.0f);
+  EXPECT_NO_THROW(model.pushCommandHistory(123.0f, 0.0f, 0.0f));
+  model.predict(state);
+
+  EXPECT_TRUE(xt::allclose(state.vx, 2.0f));
+}
