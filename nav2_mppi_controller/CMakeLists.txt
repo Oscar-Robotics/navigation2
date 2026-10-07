@@ -27,6 +27,7 @@ set(dependencies_pkgs
   geometry_msgs
   visualization_msgs
   nav_msgs
+  std_msgs
   nav2_core
   nav2_costmap_2d
   nav2_util

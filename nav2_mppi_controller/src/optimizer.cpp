@@ -14,6 +14,8 @@
 
 #include "nav2_mppi_controller/optimizer.hpp"
 
+#include <algorithm>
+#include <array>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -32,6 +34,17 @@ namespace mppi
 using namespace xt::placeholders;  // NOLINT
 using xt::evaluation_strategy::immediate;
 
+namespace
+{
+template<typename T>
+void applyCoupledLinearLimits(const T & vx, T & vy, const models::ControlConstraints & c)
+{
+  const T vy_limit = xt::eval(
+    c.vy * xt::maximum(1.0f - xt::maximum(vx / c.vx_max, vx / c.vx_min), 0.0f));
+  vy = xt::eval(xt::clip(vy, -vy_limit, vy_limit));
+}
+}  // namespace
+
 void Optimizer::initialize(
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent, const std::string & name,
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros,
@@ -49,6 +62,9 @@ void Optimizer::initialize(
   getParams();
 
   critic_manager_.on_configure(parent_, name_, costmap_ros_, parameters_handler_);
+  stats_pub_ = node->create_publisher<std_msgs::msg::Float32MultiArray>(
+    name_ + "/optimizer_stats", rclcpp::QoS(rclcpp::KeepAll()));
+  stats_pub_->on_activate();
   noise_generator_.initialize(settings_, isHolonomic(), name_, parameters_handler_);
 
   reset();
@@ -80,10 +96,12 @@ void Optimizer::getParams()
   getParam(s.base_constraints.ax_min, "ax_min", -3.0f);
   getParam(s.base_constraints.ay_max, "ay_max", 3.0f);
   getParam(s.base_constraints.az_max, "az_max", 3.5f);
+  getParam(s.couple_vx_vy_limits, "couple_vx_vy_limits", false);
   getParam(s.sampling_std.vx, "vx_std", 0.2f);
   getParam(s.sampling_std.vy, "vy_std", 0.2f);
   getParam(s.sampling_std.wz, "wz_std", 0.4f);
   getParam(s.retry_attempt_limit, "retry_attempt_limit", 1);
+  getParam(publish_optimizer_stats_, "publish_optimizer_stats", false);
 
   s.base_constraints.ax_max = std::abs(s.base_constraints.ax_max);
   if (s.base_constraints.ax_min > 0.0) {
@@ -170,6 +188,7 @@ void Optimizer::optimize()
 {
   for (size_t i = 0; i < settings_.iteration_count; ++i) {
     generateNoisedTrajectories();
+    critic_manager_.recordCriticCosts(publish_optimizer_stats_);
     critic_manager_.evalTrajectoriesScores(critics_data_);
     updateControlSequence();
   }
@@ -240,11 +259,21 @@ void Optimizer::generateNoisedTrajectories()
 {
   noise_generator_.setNoisedControls(state_, control_sequence_);
   noise_generator_.generateNextNoises();
+  if (useCoupledLinearLimits()) {
+    applyCoupledLinearLimits(state_.cvx, state_.cvy, settings_.constraints);
+  }
   updateStateVelocities(state_);
   integrateStateVelocities(generated_trajectories_, state_);
 }
 
 bool Optimizer::isHolonomic() const {return motion_model_->isHolonomic();}
+
+bool Optimizer::useCoupledLinearLimits() const
+{
+  const auto & c = settings_.constraints;
+  return settings_.couple_vx_vy_limits && isHolonomic() &&
+         c.vx_max > 0.0f && c.vx_min < 0.0f && c.vy > 0.0f;
+}
 
 void Optimizer::applyControlSequenceConstraints()
 {
@@ -256,6 +285,10 @@ void Optimizer::applyControlSequenceConstraints()
 
   control_sequence_.vx = xt::clip(control_sequence_.vx, s.constraints.vx_min, s.constraints.vx_max);
   control_sequence_.wz = xt::clip(control_sequence_.wz, -s.constraints.wz, s.constraints.wz);
+
+  if (useCoupledLinearLimits()) {
+    applyCoupledLinearLimits(control_sequence_.vx, control_sequence_.vy, s.constraints);
+  }
 
   float max_delta_vx = s.model_dt * s.constraints.ax_max;
   float min_delta_vx = s.model_dt * s.constraints.ax_min;
@@ -397,6 +430,10 @@ xt::xtensor<float, 2> Optimizer::getOptimizedTrajectory()
 void Optimizer::updateControlSequence()
 {
   auto & s = settings_;
+  xt::xtensor<float, 1> critics_costs;
+  if (publish_optimizer_stats_) {
+    critics_costs = costs_;
+  }
   auto bounded_noises_vx = state_.cvx - control_sequence_.vx;
   auto bounded_noises_wz = state_.cwz - control_sequence_.wz;
   xt::noalias(costs_) +=
@@ -418,6 +455,8 @@ void Optimizer::updateControlSequence()
   auto && exponents = xt::eval(xt::exp(-1 / settings_.temperature * costs_normalized));
   auto && softmaxes = xt::eval(exponents / xt::sum(exponents, immediate));
   auto && softmaxes_extened = xt::eval(xt::view(softmaxes, xt::all(), xt::newaxis()));
+  const models::Control previous{
+    control_sequence_.vx(0), control_sequence_.vy(0), control_sequence_.wz(0)};
 
   xt::noalias(control_sequence_.vx) = xt::sum(state_.cvx * softmaxes_extened, 0, immediate);
   xt::noalias(control_sequence_.wz) = xt::sum(state_.cwz * softmaxes_extened, 0, immediate);
@@ -426,6 +465,82 @@ void Optimizer::updateControlSequence()
   }
 
   applyControlSequenceConstraints();
+
+  if (publish_optimizer_stats_) {
+    publishStats(softmaxes, xt::eval(costs_ - critics_costs), previous);
+  }
+}
+
+void Optimizer::publishStats(
+  const xt::xtensor<float, 1> & softmaxes,
+  const xt::xtensor<float, 1> & control_costs,
+  const models::Control & previous)
+{
+  const size_t batch = costs_.shape(0);
+  const xt::xtensor<float, 1> sample_vx = xt::mean(state_.cvx, {1});
+  const xt::xtensor<float, 1> sample_vy = xt::mean(state_.cvy, {1});
+  const xt::xtensor<float, 1> sample_wz = xt::mean(state_.cwz, {1});
+
+  auto median = [](std::vector<float> values) {
+      if (values.empty()) {
+        return 0.0f;
+      }
+      std::nth_element(values.begin(), values.begin() + values.size() / 2, values.end());
+      return values[values.size() / 2];
+    };
+  auto split = [batch, &median](const xt::xtensor<float, 1> & cost, const xt::xtensor<float, 1> & key) {
+      const float key_median = median(std::vector<float>(key.begin(), key.end()));
+      std::vector<float> above, below;
+      for (size_t i = 0; i < batch; ++i) {
+        (key(i) > key_median ? above : below).push_back(cost(i));
+      }
+      return median(above) - median(below);
+    };
+
+  std_msgs::msg::Float32MultiArray msg;
+  std::string rows;
+  auto add_row = [&msg, &rows](const std::string & name, const std::array<float, 5> & values) {
+      rows += (rows.empty() ? "" : ",") + name;
+      msg.data.insert(msg.data.end(), values.begin(), values.end());
+    };
+  auto add_cost = [&](const std::string & name, const xt::xtensor<float, 1> & cost) {
+      add_row(
+        name, {xt::sum(softmaxes * cost, immediate)(), median(std::vector<float>(cost.begin(), cost.end())),
+          split(cost, sample_vx), split(cost, sample_vy), split(cost, sample_wz)});
+    };
+
+  const auto & critic_costs = critic_manager_.getCriticCosts();
+  const auto & critic_names = critic_manager_.getCriticNames();
+  for (size_t q = 0; q < critic_costs.size(); ++q) {
+    add_cost(critic_names[q], critic_costs[q]);
+  }
+  add_cost("control_cost", control_costs);
+  add_cost("total", costs_);
+
+  const float effective_samples = 1.0f / xt::sum(softmaxes * softmaxes, immediate)();
+  const float spread = xt::stddev(costs_, immediate)() / settings_.temperature;
+  add_row("softmax", {effective_samples, spread, xt::amin(costs_, immediate)(), 0.0f, 0.0f});
+  add_row(
+    "control", {control_sequence_.vx(0), control_sequence_.vy(0), control_sequence_.wz(0),
+      0.0f, 0.0f});
+  add_row(
+    "update", {control_sequence_.vx(0) - previous.vx, control_sequence_.vy(0) - previous.vy,
+      control_sequence_.wz(0) - previous.wz, 0.0f, 0.0f});
+  const auto & c = settings_.constraints;
+  add_row(
+    "at_limit", {static_cast<float>(xt::mean(xt::cast<float>(state_.cvx >= c.vx_max), immediate)()),
+      static_cast<float>(xt::mean(xt::cast<float>(xt::abs(state_.cvy) >= c.vy), immediate)()),
+      static_cast<float>(xt::mean(xt::cast<float>(xt::abs(state_.cwz) >= c.wz), immediate)()),
+      0.0f, 0.0f});
+
+  msg.layout.dim.resize(2);
+  msg.layout.dim[0].label = rows;
+  msg.layout.dim[0].size = msg.data.size() / 5;
+  msg.layout.dim[0].stride = msg.data.size();
+  msg.layout.dim[1].label = "weighted,median,split_vx,split_vy,split_wz";
+  msg.layout.dim[1].size = 5;
+  msg.layout.dim[1].stride = 5;
+  stats_pub_->publish(msg);
 }
 
 geometry_msgs::msg::TwistStamped Optimizer::getControlFromSequenceAsTwist(

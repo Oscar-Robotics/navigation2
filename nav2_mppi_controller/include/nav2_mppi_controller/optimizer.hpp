@@ -17,6 +17,7 @@
 
 #include <string>
 #include <memory>
+#include <vector>
 
 #include <xtensor/xtensor.hpp>
 #include <xtensor/xview.hpp>
@@ -30,6 +31,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "std_msgs/msg/float32_multi_array.hpp"
 
 #include "nav2_mppi_controller/models/optimizer_settings.hpp"
 #include "nav2_mppi_controller/motion_models.hpp"
@@ -221,6 +223,12 @@ protected:
   bool isHolonomic() const;
 
   /**
+   * @brief Whether forward and lateral speed limits are shared
+   * @return Bool if vx and vy are limited together
+   */
+  bool useCoupledLinearLimits() const;
+
+  /**
    * @brief Using control frequence and time step size, determine if trajectory
    * offset should be used to populate initial state of the next cycle
    */
@@ -231,6 +239,17 @@ protected:
    * @param fail Whether the system failed to recover from
    */
   bool fallback(bool fail);
+
+  /**
+   * @brief Publish what each cost term contributed to the last control update
+   * @param softmaxes Weight of each sampled trajectory in the update
+   * @param control_costs Control cost of each sampled trajectory
+   * @param previous First control of the sequence before the update
+   */
+  void publishStats(
+    const xt::xtensor<float, 1> & softmaxes,
+    const xt::xtensor<float, 1> & control_costs,
+    const models::Control & previous);
 
 protected:
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
@@ -253,6 +272,9 @@ protected:
   models::Path path_;
   geometry_msgs::msg::Pose goal_;
   xt::xtensor<float, 1> costs_;
+
+  bool publish_optimizer_stats_{false};
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float32MultiArray>::SharedPtr stats_pub_;
 
   CriticData critics_data_ = {
     state_, generated_trajectories_, path_, goal_,
