@@ -65,6 +65,18 @@ void SmacPlanner2D::configure(
     node, name + ".tolerance", rclcpp::ParameterValue(0.125));
   _tolerance = static_cast<float>(node->get_parameter(name + ".tolerance").as_double());
   nav2_util::declare_parameter_if_not_declared(
+    node, name + ".tolerance_center_topic", rclcpp::ParameterValue(std::string("")));
+  const std::string tolerance_center_topic =
+    node->get_parameter(name + ".tolerance_center_topic").as_string();
+  if (!tolerance_center_topic.empty()) {
+    _tolerance_center_sub = node->create_subscription<geometry_msgs::msg::PoseStamped>(
+      tolerance_center_topic, rclcpp::QoS(1).reliable().transient_local(),
+      [this](const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(_tolerance_center_mutex);
+        _tolerance_center = msg;
+      });
+  }
+  nav2_util::declare_parameter_if_not_declared(
     node, name + ".downsample_costmap", rclcpp::ParameterValue(false));
   node->get_parameter(name + ".downsample_costmap", _downsample_costmap);
   nav2_util::declare_parameter_if_not_declared(
@@ -188,6 +200,7 @@ void SmacPlanner2D::cleanup()
     _costmap_downsampler.reset();
   }
   _raw_plan_publisher.reset();
+  _tolerance_center_sub.reset();
 }
 
 nav_msgs::msg::Path SmacPlanner2D::createPlan(
@@ -247,13 +260,26 @@ nav_msgs::msg::Path SmacPlanner2D::createPlan(
     return plan;
   }
 
+  float tolerance = _tolerance;
+  {
+    std::lock_guard<std::mutex> lock(_tolerance_center_mutex);
+    if (_tolerance_center && _tolerance_center->header.frame_id == _global_frame) {
+      const float off_center = static_cast<float>(std::hypot(
+          goal.pose.position.x - _tolerance_center->pose.position.x,
+          goal.pose.position.y - _tolerance_center->pose.position.y));
+      if (off_center <= _tolerance) {
+        tolerance = _tolerance - off_center;
+      }
+    }
+  }
+
   // Compute plan
   Node2D::CoordinateVector path;
   int num_iterations = 0;
   std::string error;
   try {
     if (!_a_star->createPath(
-        path, num_iterations, _tolerance / static_cast<float>(costmap->getResolution())))
+        path, num_iterations, tolerance / static_cast<float>(costmap->getResolution())))
     {
       if (num_iterations < _a_star->getMaxIterations()) {
         error = std::string("no valid path found");

@@ -25,6 +25,7 @@
   <depend>tf2_eigen</depend>
   <depend>tf2_ros</depend>
   <depend>std_msgs</depend>
+  <depend>nav2_dynamic_msgs</depend>
   <depend>xtensor</depend>
   <depend>libomp-dev</depend>
   <depend>benchmark</depend>

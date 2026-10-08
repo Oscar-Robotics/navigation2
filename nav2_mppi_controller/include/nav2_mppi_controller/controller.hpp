@@ -21,10 +21,13 @@
 #include "nav2_mppi_controller/tools/path_handler.hpp"
 #include "nav2_mppi_controller/optimizer.hpp"
 #include "nav2_mppi_controller/tools/trajectory_visualizer.hpp"
+#include "nav2_mppi_controller/tools/human_speed_limiter.hpp"
 #include "nav2_mppi_controller/models/constraints.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 
 #include "nav2_core/controller.hpp"
+#include "nav2_costmap_2d/costmap_filters/filter_values.hpp"
+#include "nav_msgs/msg/path.hpp"
 #include "nav2_core/goal_checker.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -119,6 +122,16 @@ protected:
   Optimizer optimizer_;
   PathHandler path_handler_;
   TrajectoryVisualizer trajectory_visualizer_;
+  HumanSpeedLimiter human_speed_limiter_;
+  bool own_speed_limit_applied_{false};
+  rclcpp::Time stopped_for_human_at_{0, 0, RCL_ROS_TIME};
+
+  // Speed limit received through setSpeedLimit, restored when the controller's own limits end
+  double external_speed_limit_{nav2_costmap_2d::NO_SPEED_LIMIT};
+  bool external_speed_limit_percentage_{false};
+
+  // Plan as received from the planner, for the human speed limiter
+  nav_msgs::msg::Path last_plan_;
 
   bool visualize_;
 

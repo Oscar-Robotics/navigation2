@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include <stdint.h>
+#include <algorithm>
 #include <chrono>
+#include <optional>
 #include "nav2_mppi_controller/controller.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 
@@ -48,6 +50,9 @@ void MPPIController::configure(
     parent_, name_,
     costmap_ros_->getGlobalFrameID(), parameters_handler_.get());
 
+  human_speed_limiter_.initialize(
+    parent_, name_, tf_buffer_, parameters_handler_.get());
+
   RCLCPP_INFO(logger_, "Configured MPPI Controller: %s", name_.c_str());
 }
 
@@ -55,6 +60,7 @@ void MPPIController::cleanup()
 {
   optimizer_.shutdown();
   trajectory_visualizer_.on_cleanup();
+  human_speed_limiter_.cleanup();
   parameters_handler_.reset();
   RCLCPP_INFO(logger_, "Cleaned up MPPI Controller: %s", name_.c_str());
 }
@@ -62,6 +68,7 @@ void MPPIController::cleanup()
 void MPPIController::activate()
 {
   trajectory_visualizer_.on_activate();
+  human_speed_limiter_.activate();
   parameters_handler_->start();
   RCLCPP_INFO(logger_, "Activated MPPI Controller: %s", name_.c_str());
 }
@@ -69,12 +76,14 @@ void MPPIController::activate()
 void MPPIController::deactivate()
 {
   trajectory_visualizer_.on_deactivate();
+  human_speed_limiter_.deactivate();
   RCLCPP_INFO(logger_, "Deactivated MPPI Controller: %s", name_.c_str());
 }
 
 void MPPIController::reset()
 {
   optimizer_.reset();
+  stopped_for_human_at_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 }
 
 geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
@@ -95,6 +104,35 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   geometry_msgs::msg::Pose goal = path_handler_.getTransformedGoal(robot_pose.header.stamp).pose;
 
   nav_msgs::msg::Path transformed_plan = path_handler_.transformPath(robot_pose);
+
+  std::optional<double> own_limit;
+  if (const auto ratio = human_speed_limiter_.speedRatio(robot_pose, last_plan_)) {
+    if (*ratio <= 0.0) {
+      stopped_for_human_at_ = clock_->now();
+    } else if (*ratio < 1.0) {
+      own_limit = *ratio * optimizer_.baseSpeedLimit();
+    }
+  }
+  if (stopped_for_human_at_.nanoseconds() > 0 &&
+    (clock_->now() - stopped_for_human_at_).seconds() < human_speed_limiter_.resumeDelay())
+  {
+    geometry_msgs::msg::TwistStamped stopped;
+    stopped.header.frame_id = costmap_ros_->getBaseFrameID();
+    stopped.header.stamp = robot_pose.header.stamp;
+    return stopped;
+  }
+  if (own_limit) {
+    if (external_speed_limit_ != nav2_costmap_2d::NO_SPEED_LIMIT) {
+      own_limit = std::min(
+        *own_limit, external_speed_limit_percentage_ ?
+        external_speed_limit_ / 100.0 * optimizer_.baseSpeedLimit() : external_speed_limit_);
+    }
+    optimizer_.setSpeedLimit(*own_limit, false);
+    own_speed_limit_applied_ = true;
+  } else if (own_speed_limit_applied_) {
+    optimizer_.setSpeedLimit(external_speed_limit_, external_speed_limit_percentage_);
+    own_speed_limit_applied_ = false;
+  }
 
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
   std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> costmap_lock(*(costmap->getMutex()));
@@ -124,12 +162,17 @@ void MPPIController::visualize(nav_msgs::msg::Path transformed_plan)
 
 void MPPIController::setPlan(const nav_msgs::msg::Path & path)
 {
+  last_plan_ = path;
   path_handler_.setPath(path);
 }
 
 void MPPIController::setSpeedLimit(const double & speed_limit, const bool & percentage)
 {
-  optimizer_.setSpeedLimit(speed_limit, percentage);
+  external_speed_limit_ = speed_limit;
+  external_speed_limit_percentage_ = percentage;
+  if (!own_speed_limit_applied_) {
+    optimizer_.setSpeedLimit(speed_limit, percentage);
+  }
 }
 
 }  // namespace nav2_mppi_controller

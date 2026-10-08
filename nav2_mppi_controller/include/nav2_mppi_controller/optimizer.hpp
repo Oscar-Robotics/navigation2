@@ -114,6 +114,11 @@ public:
   void setSpeedLimit(double speed_limit, bool percentage);
 
   /**
+   * @brief Forward speed limit without any speed limit applied
+   */
+  double baseSpeedLimit() const {return settings_.base_constraints.vx_max;}
+
+  /**
    * @brief Reset the optimization problem to initial conditions
    */
   void reset();

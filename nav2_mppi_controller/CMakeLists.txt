@@ -34,6 +34,7 @@ set(dependencies_pkgs
   tf2_geometry_msgs
   tf2_eigen
   tf2_ros
+  nav2_dynamic_msgs
 )
 
 foreach(pkg IN LISTS dependencies_pkgs)
@@ -76,6 +77,7 @@ add_library(mppi_controller SHARED
   src/path_handler.cpp
   src/parameters_handler.cpp
   src/noise_generator.cpp
+  src/human_speed_limiter.cpp
 )
 
 add_library(mppi_critics SHARED
