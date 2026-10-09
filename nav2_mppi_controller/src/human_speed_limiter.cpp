@@ -49,6 +49,8 @@ void HumanSpeedLimiter::initialize(
   getParam(disc_radius_, "disc_radius", 0.6);
   getParam(slow_distance_, "slow_distance", 3.6);
   getParam(stop_distance_, "stop_distance", 1.2);
+  getParam(slow_time_, "slow_time", 3.0);
+  getParam(stop_time_, "stop_time", 1.0);
   getParam(resume_delay_, "resume_delay", 1.0);
   getParam(resume_same_path_distance_, "resume_same_path_distance", 2.5);
   getParam(resume_same_path_tolerance_, "resume_same_path_tolerance", 0.1);
@@ -58,11 +60,11 @@ void HumanSpeedLimiter::initialize(
     return;
   }
   if (prediction_step_ <= 0.0 || !std::isfinite(prediction_horizon_) || prediction_horizon_ < 0.0 ||
-    slow_distance_ <= stop_distance_ || stop_distance_ < 0.0)
+    slow_distance_ <= stop_distance_ || stop_distance_ < 0.0 || slow_time_ <= stop_time_ || stop_time_ < 0.0)
   {
     throw std::runtime_error(
-            "HumanSpeedLimiter: prediction_step must be > 0, prediction_horizon finite and >= 0, and "
-            "slow_distance > stop_distance >= 0");
+            "HumanSpeedLimiter: prediction_step must be > 0, prediction_horizon finite and >= 0, "
+            "slow_distance > stop_distance >= 0 and slow_time > stop_time >= 0");
   }
   prediction_steps_ = static_cast<int>(std::floor(prediction_horizon_ / prediction_step_));
   tracks_sub_ = node->create_subscription<nav2_dynamic_msgs::msg::ObstacleArray>(
@@ -158,6 +160,7 @@ std::optional<double> HumanSpeedLimiter::speedRatio(
   }
 
   std::vector<human_speed_limit::Point> predicted;
+  std::vector<double> times;
   for (const auto & track : tracks->obstacles) {
     const tf2::Vector3 position = tracks_to_plan * tf2::Vector3(track.position.x, track.position.y, 0.0);
     const tf2::Vector3 velocity =
@@ -169,6 +172,9 @@ std::optional<double> HumanSpeedLimiter::speedRatio(
       {position.x(), position.y()}, {velocity.x(), velocity.y()}, age, prediction_step_, prediction_steps_,
       footprint_in_plan, disc_radius_);
     predicted.insert(predicted.end(), positions.begin(), positions.end());
+    for (size_t k = 0; k < positions.size(); ++k) {
+      times.push_back(age + k * prediction_step_);
+    }
   }
 
   std::vector<human_speed_limit::Point> plan;
@@ -176,10 +182,10 @@ std::optional<double> HumanSpeedLimiter::speedRatio(
   for (const auto & pose : global_plan.poses) {
     plan.emplace_back(pose.pose.position.x, pose.pose.position.y);
   }
-  const auto conflict =
-    human_speed_limit::firstConflict(plan, {robot_x, robot_y}, predicted, disc_radius_, slow_distance_);
-  const double ratio =
-    conflict ? human_speed_limit::speedRatio(conflict->distance, slow_distance_, stop_distance_) : 1.0;
+  const auto limit = human_speed_limit::speedLimit(
+    plan, {robot_x, robot_y}, predicted, times, disc_radius_, slow_distance_, stop_distance_, slow_time_,
+    stop_time_);
+  const double ratio = limit ? limit->ratio : 1.0;
   if (was_visualizing_ && !visualize_ && discs_pub_ && discs_pub_->is_activated()) {
     visualization_msgs::msg::MarkerArray markers;
     visualization_msgs::msg::Marker clear;
@@ -191,10 +197,11 @@ std::optional<double> HumanSpeedLimiter::speedRatio(
   if (visualize_) {
     visualize(
       plan_frame, predicted, plan,
-      conflict ? std::make_optional(std::make_pair(conflict->plan_index, conflict->predicted_index)) : std::nullopt,
+      limit ? std::make_optional(std::make_pair(limit->conflict.plan_index, limit->conflict.predicted_index)) :
+      std::nullopt,
       ratio);
   }
-  if (!conflict) {
+  if (!limit) {
     return publish(std::nullopt);
   }
   if (ratio <= 0.0) {

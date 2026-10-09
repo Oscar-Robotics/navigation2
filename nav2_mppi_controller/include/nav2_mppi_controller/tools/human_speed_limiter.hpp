@@ -113,6 +113,8 @@ protected:
   double disc_radius_{0.0};
   double slow_distance_{0.0};
   double stop_distance_{0.0};
+  double slow_time_{0.0};
+  double stop_time_{0.0};
   double resume_delay_{0.0};
   double resume_same_path_distance_{0.0};
   double resume_same_path_tolerance_{0.0};

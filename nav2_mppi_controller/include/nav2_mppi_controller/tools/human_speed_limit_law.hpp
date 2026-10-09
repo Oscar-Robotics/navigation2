@@ -229,6 +229,55 @@ inline double speedRatio(double distance, double slow_distance, double stop_dist
   return (distance - stop_distance) / (slow_distance - stop_distance);
 }
 
+/**
+ * @brief Share of the full speed allowed for a conflict at a distance along the plan with a position
+ * predicted at a time in the future.
+ *
+ * The larger of two shares: the one from the distance (see above) and the one from the time, 0 at stop_time
+ * and sooner, rising linearly to 1 at slow_time. The robot therefore stops only for a conflict that is both
+ * within stop_distance and predicted within stop_time; a later one at the same place only slows it.
+ */
+inline double speedRatio(
+  double distance, double time, double slow_distance, double stop_distance, double slow_time, double stop_time)
+{
+  return std::max(speedRatio(distance, slow_distance, stop_distance), speedRatio(time, slow_time, stop_time));
+}
+
+struct Limit
+{
+  /// Share of the full speed allowed
+  double ratio;
+  Conflict conflict;
+};
+
+/**
+ * @brief Lowest share of the full speed over all predicted positions that come onto the plan.
+ *
+ * Each predicted position is taken with its own conflict point on the plan and its own time.
+ * @param times Time in the future of each predicted position
+ * @return The limit and the conflict that sets it, or nothing when no predicted position comes onto the plan
+ */
+inline std::optional<Limit> speedLimit(
+  const std::vector<Point> & plan, const Point & robot, const std::vector<Point> & predicted,
+  const std::vector<double> & times, double disc_radius, double slow_distance, double stop_distance,
+  double slow_time, double stop_time)
+{
+  std::optional<Limit> limit;
+  for (size_t k = 0; k < predicted.size() && k < times.size(); ++k) {
+    auto conflict = firstConflict(plan, robot, {predicted[k]}, disc_radius, slow_distance);
+    if (!conflict) {
+      continue;
+    }
+    conflict->predicted_index = k;
+    const double ratio =
+      speedRatio(conflict->distance, times[k], slow_distance, stop_distance, slow_time, stop_time);
+    if (!limit || ratio < limit->ratio) {
+      limit = Limit{ratio, *conflict};
+    }
+  }
+  return limit;
+}
+
 }  // namespace human_speed_limit
 }  // namespace mppi
 

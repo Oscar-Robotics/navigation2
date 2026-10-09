@@ -21,6 +21,7 @@ using mppi::human_speed_limit::distanceToConflict;
 using mppi::human_speed_limit::planDeviation;
 using mppi::human_speed_limit::Point;
 using mppi::human_speed_limit::predictedPositions;
+using mppi::human_speed_limit::speedLimit;
 using mppi::human_speed_limit::speedRatio;
 
 namespace
@@ -155,6 +156,27 @@ TEST(HumanSpeedLimitLaw, a_course_through_the_footprint_is_at_no_distance_from_i
   EXPECT_DOUBLE_EQ(mppi::human_speed_limit::distanceToPolygon({-1.0, 0.0}, {1.0, 0.0}, footprint()), 0.0);
   EXPECT_DOUBLE_EQ(mppi::human_speed_limit::distanceToPolygon({0.0, 0.0}, {0.1, 0.0}, footprint()), 0.0);
   EXPECT_NEAR(mppi::human_speed_limit::distanceToPolygon({-1.0, 1.0}, {1.0, 1.0}, footprint()), 0.74, 1e-9);
+}
+
+TEST(HumanSpeedLimitLaw, the_robot_stops_only_for_a_conflict_both_close_and_soon)
+{
+  EXPECT_DOUBLE_EQ(speedRatio(1.0, 1.0, 3.6, 1.2, 3.0, 1.0), 0.0);
+  EXPECT_DOUBLE_EQ(speedRatio(1.0, 2.0, 3.6, 1.2, 3.0, 1.0), 0.5);
+  EXPECT_DOUBLE_EQ(speedRatio(2.4, 0.0, 3.6, 1.2, 3.0, 1.0), 0.5);
+  EXPECT_DOUBLE_EQ(speedRatio(3.6, 0.0, 3.6, 1.2, 3.0, 1.0), 1.0);
+}
+
+TEST(HumanSpeedLimitLaw, the_limit_is_set_by_the_predicted_position_that_allows_the_least_speed)
+{
+  const std::vector<Point> predicted{{0.8, 0.0}, {3.0, 0.0}, {5.0, 3.0}};
+  const auto late_and_close = speedLimit(straightPlan(), {0.0, 0.0}, predicted, {2.0, 0.0, 0.0}, 0.6, 3.6, 1.2, 3.0, 1.0);
+  ASSERT_TRUE(late_and_close.has_value());
+  EXPECT_DOUBLE_EQ(late_and_close->ratio, 0.5);
+  EXPECT_EQ(late_and_close->conflict.predicted_index, 0u);
+  const auto soon_and_close = speedLimit(straightPlan(), {0.0, 0.0}, predicted, {0.5, 0.0, 0.0}, 0.6, 3.6, 1.2, 3.0, 1.0);
+  ASSERT_TRUE(soon_and_close.has_value());
+  EXPECT_DOUBLE_EQ(soon_and_close->ratio, 0.0);
+  EXPECT_FALSE(speedLimit(straightPlan(), {0.0, 0.0}, {{5.0, 3.0}}, {0.0}, 0.6, 3.6, 1.2, 3.0, 1.0).has_value());
 }
 
 TEST(HumanSpeedLimitLaw, a_plan_sent_again_from_further_along_has_not_moved)
