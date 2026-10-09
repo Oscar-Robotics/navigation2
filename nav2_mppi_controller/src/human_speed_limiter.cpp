@@ -104,7 +104,8 @@ void HumanSpeedLimiter::deactivate()
 }
 
 std::optional<double> HumanSpeedLimiter::speedRatio(
-  const geometry_msgs::msg::PoseStamped & robot_pose, const nav_msgs::msg::Path & global_plan)
+  const geometry_msgs::msg::PoseStamped & robot_pose, const nav_msgs::msg::Path & global_plan,
+  const std::vector<geometry_msgs::msg::Point> & footprint)
 {
   if (!enabled_) {
     return std::nullopt;
@@ -149,6 +150,12 @@ std::optional<double> HumanSpeedLimiter::speedRatio(
   tf2::fromMsg(robot_pose.pose, robot_in_frame);
   const tf2::Transform robot = robot_to_plan * robot_in_frame;
   const double robot_x = robot.getOrigin().x(), robot_y = robot.getOrigin().y();
+  std::vector<human_speed_limit::Point> footprint_in_plan;
+  footprint_in_plan.reserve(footprint.size());
+  for (const auto & corner : footprint) {
+    const tf2::Vector3 p = robot * tf2::Vector3(corner.x, corner.y, 0.0);
+    footprint_in_plan.emplace_back(p.x(), p.y());
+  }
 
   std::vector<human_speed_limit::Point> predicted;
   for (const auto & track : tracks->obstacles) {
@@ -160,7 +167,7 @@ std::optional<double> HumanSpeedLimiter::speedRatio(
     }
     const auto positions = human_speed_limit::predictedPositions(
       {position.x(), position.y()}, {velocity.x(), velocity.y()}, age, prediction_step_, prediction_steps_,
-      {robot_x, robot_y}, disc_radius_);
+      footprint_in_plan, disc_radius_);
     predicted.insert(predicted.end(), positions.begin(), positions.end());
   }
 

@@ -59,10 +59,12 @@ public:
    * @brief Share of the full speed allowed in this control cycle
    * @param robot_pose Robot pose in the costmap frame
    * @param global_plan Plan as received by the controller, in its own frame
+   * @param footprint Corners of the robot's footprint in the robot's frame
    * @return Ratio in [0, 1], 0 meaning stop, or nothing when no tracked obstacle calls for a limit
    */
   std::optional<double> speedRatio(
-    const geometry_msgs::msg::PoseStamped & robot_pose, const nav_msgs::msg::Path & global_plan);
+    const geometry_msgs::msg::PoseStamped & robot_pose, const nav_msgs::msg::Path & global_plan,
+    const std::vector<geometry_msgs::msg::Point> & footprint);
 
   /**
    * @brief Tell the limiter a plan was received, so it can tell when the plan last moved

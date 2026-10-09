@@ -25,6 +25,11 @@ using mppi::human_speed_limit::speedRatio;
 
 namespace
 {
+std::vector<Point> footprint()
+{
+  return {{0.33, 0.26}, {0.33, -0.26}, {-0.26, -0.26}, {-0.26, 0.26}};
+}
+
 std::vector<Point> straightPlan()
 {
   std::vector<Point> plan;
@@ -100,7 +105,7 @@ TEST(HumanSpeedLimitLaw, a_conflict_just_past_the_examined_distance_is_not_retur
 
 TEST(HumanSpeedLimitLaw, an_obstacle_coming_from_behind_is_not_predicted_past_the_robot)
 {
-  const auto overtaking = predictedPositions({-1.5, 0.2}, {1.5, 0.0}, 0.0, 0.25, 8, {0.0, 0.0}, 0.6);
+  const auto overtaking = predictedPositions({-1.5, 0.2}, {1.5, 0.0}, 0.0, 0.25, 8, footprint(), 0.6);
   ASSERT_FALSE(overtaking.empty());
   for (const auto & p : overtaking) {
     EXPECT_LT(p.first, -0.5);
@@ -110,14 +115,14 @@ TEST(HumanSpeedLimitLaw, an_obstacle_coming_from_behind_is_not_predicted_past_th
 
 TEST(HumanSpeedLimitLaw, an_obstacle_passing_wide_of_the_robot_is_predicted_ahead_of_it)
 {
-  const auto passing = predictedPositions({-1.5, 1.0}, {1.5, 0.0}, 0.0, 0.25, 8, {0.0, 0.0}, 0.6);
+  const auto passing = predictedPositions({-1.5, 1.0}, {1.5, 0.0}, 0.0, 0.25, 8, footprint(), 0.6);
   EXPECT_EQ(passing.size(), 9u);
   EXPECT_GT(passing.back().first, 1.0);
 }
 
 TEST(HumanSpeedLimitLaw, an_oncoming_obstacle_is_predicted_up_to_the_robot_and_still_conflicts)
 {
-  const auto oncoming = predictedPositions({4.0, 0.0}, {-1.2, 0.0}, 0.0, 0.25, 16, {0.0, 0.0}, 0.6);
+  const auto oncoming = predictedPositions({4.0, 0.0}, {-1.2, 0.0}, 0.0, 0.25, 16, footprint(), 0.6);
   ASSERT_FALSE(oncoming.empty());
   for (const auto & p : oncoming) {
     EXPECT_GT(p.first, 0.6);
@@ -129,17 +134,27 @@ TEST(HumanSpeedLimitLaw, an_oncoming_obstacle_is_predicted_up_to_the_robot_and_s
 
 TEST(HumanSpeedLimitLaw, a_fast_obstacle_cannot_step_over_the_robot_between_two_predictions)
 {
-  const auto fast = predictedPositions({-0.9, 0.5}, {4.0, 0.0}, 0.0, 0.5, 4, {0.0, 0.0}, 0.6);
+  const auto fast = predictedPositions({-0.9, 0.5}, {4.0, 0.0}, 0.0, 0.5, 4, footprint(), 0.6);
   EXPECT_EQ(fast.size(), 1u);
 }
 
-TEST(HumanSpeedLimitLaw, an_obstacle_already_at_the_robot_keeps_its_current_position_only)
+TEST(HumanSpeedLimitLaw, an_obstacle_whose_disc_touches_the_footprint_has_no_predicted_position)
 {
-  const auto touching = predictedPositions({0.4, 0.0}, {0.5, 0.0}, 0.0, 0.25, 8, {0.0, 0.0}, 0.6);
-  ASSERT_EQ(touching.size(), 1u);
-  const auto distance = distanceToConflict(straightPlan(), {0.0, 0.0}, touching, 0.6, 3.6);
-  ASSERT_TRUE(distance.has_value());
-  EXPECT_DOUBLE_EQ(*distance, 0.0);
+  EXPECT_TRUE(predictedPositions({-0.8, 0.0}, {0.6, 0.0}, 0.0, 0.25, 8, footprint(), 0.6).empty());
+  EXPECT_TRUE(predictedPositions({0.9, 0.0}, {-0.6, 0.0}, 0.0, 0.25, 8, footprint(), 0.6).empty());
+}
+
+TEST(HumanSpeedLimitLaw, a_follower_beside_the_robot_centre_is_not_predicted_onto_the_path_ahead)
+{
+  const auto follower = predictedPositions({-1.5, 0.8}, {1.2, -0.3}, 0.0, 0.25, 8, footprint(), 0.6);
+  EXPECT_FALSE(distanceToConflict(straightPlan(), {0.0, 0.0}, follower, 0.6, 3.6).has_value());
+}
+
+TEST(HumanSpeedLimitLaw, a_course_through_the_footprint_is_at_no_distance_from_it)
+{
+  EXPECT_DOUBLE_EQ(mppi::human_speed_limit::distanceToPolygon({-1.0, 0.0}, {1.0, 0.0}, footprint()), 0.0);
+  EXPECT_DOUBLE_EQ(mppi::human_speed_limit::distanceToPolygon({0.0, 0.0}, {0.1, 0.0}, footprint()), 0.0);
+  EXPECT_NEAR(mppi::human_speed_limit::distanceToPolygon({-1.0, 1.0}, {1.0, 1.0}, footprint()), 0.74, 1e-9);
 }
 
 TEST(HumanSpeedLimitLaw, a_plan_sent_again_from_further_along_has_not_moved)

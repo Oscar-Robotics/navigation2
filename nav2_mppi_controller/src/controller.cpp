@@ -106,7 +106,8 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   nav_msgs::msg::Path transformed_plan = path_handler_.transformPath(robot_pose);
 
   std::optional<double> own_limit;
-  if (const auto ratio = human_speed_limiter_.speedRatio(robot_pose, last_plan_)) {
+  if (const auto ratio = human_speed_limiter_.speedRatio(
+      robot_pose, last_plan_, costmap_ros_->getRobotFootprint())) {
     if (*ratio > 0.0 && *ratio < 1.0) {
       own_limit = *ratio * optimizer_.baseSpeedLimit();
     }

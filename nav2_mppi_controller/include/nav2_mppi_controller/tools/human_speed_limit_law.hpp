@@ -43,33 +43,80 @@ inline double distanceToSegment(const Point & point, const Point & a, const Poin
 }
 
 /**
+ * @brief Whether a point lies inside a polygon given by its corners in order.
+ */
+inline bool insidePolygon(const Point & point, const std::vector<Point> & polygon)
+{
+  bool inside = false;
+  for (size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+    const Point & a = polygon[i];
+    const Point & b = polygon[j];
+    if ((a.second > point.second) != (b.second > point.second) &&
+      point.first < (b.first - a.first) * (point.second - a.second) / (b.second - a.second) + a.first)
+    {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * @brief Whether the segments a-b and c-d cross.
+ */
+inline bool segmentsCross(const Point & a, const Point & b, const Point & c, const Point & d)
+{
+  const auto side = [](const Point & p, const Point & q, const Point & r) {
+      return (q.first - p.first) * (r.second - p.second) - (q.second - p.second) * (r.first - p.first);
+    };
+  const double d1 = side(c, d, a), d2 = side(c, d, b), d3 = side(a, b, c), d4 = side(a, b, d);
+  return ((d1 > 0.0) != (d2 > 0.0)) && ((d3 > 0.0) != (d4 > 0.0));
+}
+
+/**
+ * @brief Distance from the segment a-b to a polygon given by its corners in order; 0 when they overlap.
+ */
+inline double distanceToPolygon(const Point & a, const Point & b, const std::vector<Point> & polygon)
+{
+  if (polygon.empty()) {
+    return std::numeric_limits<double>::infinity();
+  }
+  if (insidePolygon(a, polygon) || insidePolygon(b, polygon)) {
+    return 0.0;
+  }
+  double nearest = std::numeric_limits<double>::max();
+  for (size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+    if (segmentsCross(a, b, polygon[i], polygon[j])) {
+      return 0.0;
+    }
+    nearest = std::min(
+      {nearest, distanceToSegment(a, polygon[i], polygon[j]), distanceToSegment(b, polygon[i], polygon[j]),
+        distanceToSegment(polygon[i], a, b)});
+  }
+  return nearest;
+}
+
+/**
  * @brief Predicted positions of an obstacle moving at constant velocity, up to where it reaches the robot.
  *
- * Positions are taken every step, from first_time, steps + 1 times. Once the obstacle's predicted course
- * comes within radius of the robot, that position and the later ones are left out: an obstacle that would
- * have reached the robot, whether it then stops or passes it, is not predicted beyond it. An obstacle
- * already within radius of the robot keeps its first position only.
+ * Positions are taken every step, from first_time, steps + 1 times. Once a disc of the given radius around
+ * the obstacle's predicted course touches the robot's footprint, that position and the later ones are left
+ * out: an obstacle that would have reached the robot, whether it then stops or passes it, is not predicted
+ * beyond it. An obstacle whose disc already touches the footprint has no predicted position.
+ * @param footprint Corners of the robot's footprint, in order, in the frame of the positions
  */
 inline std::vector<Point> predictedPositions(
   const Point & position, const Point & velocity, double first_time, double step, int steps,
-  const Point & robot, double radius)
+  const std::vector<Point> & footprint, double radius)
 {
   std::vector<Point> predicted;
   Point previous;
   for (int k = 0; k <= steps; ++k) {
     const double time = first_time + k * step;
     const Point current{position.first + velocity.first * time, position.second + velocity.second * time};
-    if (k == 0) {
-      predicted.push_back(current);
-      if (std::hypot(current.first - robot.first, current.second - robot.second) <= radius) {
-        break;
-      }
-    } else {
-      if (distanceToSegment(robot, previous, current) <= radius) {
-        break;
-      }
-      predicted.push_back(current);
+    if (distanceToPolygon(k == 0 ? current : previous, current, footprint) <= radius) {
+      break;
     }
+    predicted.push_back(current);
     previous = current;
   }
   return predicted;
