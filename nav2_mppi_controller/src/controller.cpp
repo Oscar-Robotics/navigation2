@@ -83,7 +83,7 @@ void MPPIController::deactivate()
 void MPPIController::reset()
 {
   optimizer_.reset();
-  stopped_for_human_at_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  human_speed_limiter_.reset();
 }
 
 geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
@@ -107,15 +107,11 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 
   std::optional<double> own_limit;
   if (const auto ratio = human_speed_limiter_.speedRatio(robot_pose, last_plan_)) {
-    if (*ratio <= 0.0) {
-      stopped_for_human_at_ = clock_->now();
-    } else if (*ratio < 1.0) {
+    if (*ratio > 0.0 && *ratio < 1.0) {
       own_limit = *ratio * optimizer_.baseSpeedLimit();
     }
   }
-  if (stopped_for_human_at_.nanoseconds() > 0 &&
-    (clock_->now() - stopped_for_human_at_).seconds() < human_speed_limiter_.resumeDelay())
-  {
+  if (human_speed_limiter_.holding()) {
     geometry_msgs::msg::TwistStamped stopped;
     stopped.header.frame_id = costmap_ros_->getBaseFrameID();
     stopped.header.stamp = robot_pose.header.stamp;
@@ -162,6 +158,7 @@ void MPPIController::visualize(nav_msgs::msg::Path transformed_plan)
 
 void MPPIController::setPlan(const nav_msgs::msg::Path & path)
 {
+  human_speed_limiter_.planReceived(path, last_plan_);
   last_plan_ = path;
   path_handler_.setPath(path);
 }

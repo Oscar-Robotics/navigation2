@@ -64,7 +64,21 @@ public:
   std::optional<double> speedRatio(
     const geometry_msgs::msg::PoseStamped & robot_pose, const nav_msgs::msg::Path & global_plan);
 
-  double resumeDelay() const {return resume_delay_;}
+  /**
+   * @brief Tell the limiter a plan was received, so it can tell when the plan last moved
+   * @param plan New plan
+   * @param previous Plan it replaces
+   */
+  void planReceived(const nav_msgs::msg::Path & plan, const nav_msgs::msg::Path & previous);
+
+  /**
+   * @brief Whether the robot must stay stopped: a stop was called for and, since then, the stop condition
+   * has not been clear, or the first resume_same_path_distance of the plan has not stayed the same
+   * (within resume_same_path_tolerance), for resume_delay
+   */
+  bool holding();
+
+  void reset();
 
 protected:
   /**
@@ -98,6 +112,11 @@ protected:
   double slow_distance_{0.0};
   double stop_distance_{0.0};
   double resume_delay_{0.0};
+  double resume_same_path_distance_{0.0};
+  double resume_same_path_tolerance_{0.0};
+  bool stopped_{false};
+  rclcpp::Time stop_called_at_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time plan_moved_at_{0, 0, RCL_ROS_TIME};
 };
 
 }  // namespace mppi

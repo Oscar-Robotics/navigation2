@@ -50,6 +50,8 @@ void HumanSpeedLimiter::initialize(
   getParam(slow_distance_, "slow_distance", 3.6);
   getParam(stop_distance_, "stop_distance", 1.2);
   getParam(resume_delay_, "resume_delay", 1.0);
+  getParam(resume_same_path_distance_, "resume_same_path_distance", 2.5);
+  getParam(resume_same_path_tolerance_, "resume_same_path_tolerance", 0.1);
   getParam(visualize_, "visualize", false);
 
   if (!enabled_) {
@@ -188,7 +190,50 @@ std::optional<double> HumanSpeedLimiter::speedRatio(
   if (!conflict) {
     return publish(std::nullopt);
   }
+  if (ratio <= 0.0) {
+    stopped_ = true;
+    stop_called_at_ = clock_->now();
+  }
   return publish(ratio);
+}
+
+void HumanSpeedLimiter::planReceived(const nav_msgs::msg::Path & plan, const nav_msgs::msg::Path & previous)
+{
+  if (!enabled_ || plan.header.frame_id != previous.header.frame_id) {
+    return;
+  }
+  std::vector<human_speed_limit::Point> points, previous_points;
+  for (const auto & pose : plan.poses) {
+    points.emplace_back(pose.pose.position.x, pose.pose.position.y);
+  }
+  for (const auto & pose : previous.poses) {
+    previous_points.emplace_back(pose.pose.position.x, pose.pose.position.y);
+  }
+  if (human_speed_limit::planDeviation(points, previous_points, resume_same_path_distance_) >
+    resume_same_path_tolerance_)
+  {
+    plan_moved_at_ = clock_->now();
+  }
+}
+
+bool HumanSpeedLimiter::holding()
+{
+  if (!stopped_) {
+    return false;
+  }
+  const rclcpp::Time now = clock_->now();
+  if ((now - stop_called_at_).seconds() < resume_delay_ ||
+    (plan_moved_at_.nanoseconds() > 0 && (now - plan_moved_at_).seconds() < resume_delay_))
+  {
+    return true;
+  }
+  stopped_ = false;
+  return false;
+}
+
+void HumanSpeedLimiter::reset()
+{
+  stopped_ = false;
 }
 
 void HumanSpeedLimiter::visualize(

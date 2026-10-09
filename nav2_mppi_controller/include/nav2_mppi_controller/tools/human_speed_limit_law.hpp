@@ -139,6 +139,35 @@ inline std::optional<double> distanceToConflict(
 }
 
 /**
+ * @brief Largest distance from the first stretch of a plan to another plan.
+ *
+ * The first plan is walked from its start over at most length; for each of its points the distance to the
+ * closest point of the other plan is taken. Used to tell a plan that moved from one that was only re-sent.
+ * @return The largest of those distances, or infinity when either plan is empty
+ */
+inline double planDeviation(const std::vector<Point> & plan, const std::vector<Point> & other, double length)
+{
+  if (plan.empty() || other.empty()) {
+    return std::numeric_limits<double>::infinity();
+  }
+  double worst = 0.0, travelled = 0.0;
+  for (size_t i = 0; i < plan.size(); ++i) {
+    if (i > 0) {
+      travelled += std::hypot(plan[i].first - plan[i - 1].first, plan[i].second - plan[i - 1].second);
+    }
+    if (travelled > length) {
+      break;
+    }
+    double nearest = std::numeric_limits<double>::max();
+    for (const auto & p : other) {
+      nearest = std::min(nearest, std::hypot(plan[i].first - p.first, plan[i].second - p.second));
+    }
+    worst = std::max(worst, nearest);
+  }
+  return worst;
+}
+
+/**
  * @brief Share of the full speed allowed at a distance from the conflict: 1 at slow_distance and beyond,
  * falling linearly to 0 at stop_distance and below.
  */

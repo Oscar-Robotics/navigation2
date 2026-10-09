@@ -124,7 +124,6 @@ protected:
   TrajectoryVisualizer trajectory_visualizer_;
   HumanSpeedLimiter human_speed_limiter_;
   bool own_speed_limit_applied_{false};
-  rclcpp::Time stopped_for_human_at_{0, 0, RCL_ROS_TIME};
 
   // Speed limit received through setSpeedLimit, restored when the controller's own limits end
   double external_speed_limit_{nav2_costmap_2d::NO_SPEED_LIMIT};

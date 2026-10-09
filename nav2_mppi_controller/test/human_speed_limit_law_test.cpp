@@ -18,6 +18,7 @@
 #include "nav2_mppi_controller/tools/human_speed_limit_law.hpp"
 
 using mppi::human_speed_limit::distanceToConflict;
+using mppi::human_speed_limit::planDeviation;
 using mppi::human_speed_limit::Point;
 using mppi::human_speed_limit::predictedPositions;
 using mppi::human_speed_limit::speedRatio;
@@ -139,4 +140,30 @@ TEST(HumanSpeedLimitLaw, an_obstacle_already_at_the_robot_keeps_its_current_posi
   const auto distance = distanceToConflict(straightPlan(), {0.0, 0.0}, touching, 0.6, 3.6);
   ASSERT_TRUE(distance.has_value());
   EXPECT_DOUBLE_EQ(*distance, 0.0);
+}
+
+TEST(HumanSpeedLimitLaw, a_plan_sent_again_from_further_along_has_not_moved)
+{
+  const auto previous = straightPlan();
+  const std::vector<Point> again(previous.begin() + 30, previous.end());
+  EXPECT_NEAR(planDeviation(again, previous, 3.6), 0.0, 1e-9);
+}
+
+TEST(HumanSpeedLimitLaw, a_plan_that_swerves_within_the_examined_stretch_has_moved)
+{
+  auto swerving = straightPlan();
+  for (size_t i = 20; i < 60; ++i) {
+    swerving[i].second = 0.5;
+  }
+  EXPECT_NEAR(planDeviation(swerving, straightPlan(), 3.6), 0.5, 0.03);
+  auto later = straightPlan();
+  for (size_t i = 200; i < 240; ++i) {
+    later[i].second = 0.5;
+  }
+  EXPECT_NEAR(planDeviation(later, straightPlan(), 3.6), 0.0, 1e-9);
+}
+
+TEST(HumanSpeedLimitLaw, a_first_plan_counts_as_moved)
+{
+  EXPECT_GT(planDeviation(straightPlan(), {}, 3.6), 1.0);
 }
