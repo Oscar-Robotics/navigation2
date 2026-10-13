@@ -306,3 +306,77 @@ TEST(AStarTest, test_constants)
       "REEDS_SHEPP"), nav2_smac_planner::MotionModel::REEDS_SHEPP);
   EXPECT_EQ(nav2_smac_planner::fromString("NONE"), nav2_smac_planner::MotionModel::UNKNOWN);
 }
+
+TEST(AStarTest, test_a_star_2d_tolerance_center)
+{
+  nav2_smac_planner::SearchInfo info;
+  nav2_smac_planner::AStarAlgorithm<nav2_smac_planner::Node2D> a_star(
+    nav2_smac_planner::MotionModel::TWOD, info);
+  int max_iterations = 100000;
+  int it_on_approach = 100000;
+  double max_planning_time = 120.0;
+  float tolerance = 5.0;
+  int num_it = 0;
+
+  a_star.initialize(false, max_iterations, it_on_approach, max_planning_time, 0.0, 1);
+
+  nav2_costmap_2d::Costmap2D * costmapA =
+    new nav2_costmap_2d::Costmap2D(100, 100, 0.1, 0.0, 0.0, 0);
+  // the goal sits in the middle of an occupied block whose near edge is 9 cells away
+  for (unsigned int i = 62; i <= 78; ++i) {
+    for (unsigned int j = 42; j <= 58; ++j) {
+      costmapA->setCost(i, j, 254);
+    }
+  }
+
+  std::shared_ptr<rclcpp_lifecycle::LifecycleNode> lnode =
+    std::make_shared<rclcpp_lifecycle::LifecycleNode>("test_tolerance_center");
+  std::unique_ptr<nav2_smac_planner::GridCollisionChecker> checker =
+    std::make_unique<nav2_smac_planner::GridCollisionChecker>(costmapA, 1, lnode);
+  checker->setFootprint(nav2_costmap_2d::Footprint(), true, 0.0);
+  a_star.setCollisionChecker(checker.get());
+  a_star.setStart(20u, 50u, 0);
+  a_star.setGoal(70u, 50u, 0);
+
+  // tolerance around the goal: nothing free within 5 cells
+  nav2_smac_planner::Node2D::CoordinateVector path;
+  EXPECT_FALSE(a_star.createPath(path, num_it, tolerance));
+
+  // tolerance around a center 10 cells before the goal: ends on the free cell nearest the goal
+  path.clear();
+  num_it = 0;
+  a_star.setCollisionChecker(checker.get());
+  a_star.setStart(20u, 50u, 0);
+  a_star.setGoal(70u, 50u, 0);
+  a_star.setToleranceCenter(60u, 50u);
+  EXPECT_TRUE(a_star.createPath(path, num_it, tolerance));
+  ASSERT_FALSE(path.empty());
+  EXPECT_EQ(path.front().x, 61);
+  EXPECT_EQ(path.front().y, 50);
+  EXPECT_EQ(path.back().x, 20);
+  for (unsigned int i = 0; i != path.size(); i++) {
+    EXPECT_EQ(costmapA->getCost(path[i].x, path[i].y), 0);
+  }
+
+  // a reachable goal is still reached exactly, even outside the tolerance of the center
+  path.clear();
+  num_it = 0;
+  a_star.setCollisionChecker(checker.get());
+  a_star.setStart(20u, 50u, 0);
+  a_star.setGoal(60u, 30u, 0);
+  a_star.setToleranceCenter(60u, 50u);
+  EXPECT_TRUE(a_star.createPath(path, num_it, tolerance));
+  EXPECT_EQ(path.front().x, 60);
+  EXPECT_EQ(path.front().y, 30);
+
+  // without the center the tolerance is around the goal again
+  path.clear();
+  num_it = 0;
+  a_star.setCollisionChecker(checker.get());
+  a_star.setStart(20u, 50u, 0);
+  a_star.setGoal(70u, 50u, 0);
+  a_star.clearToleranceCenter();
+  EXPECT_FALSE(a_star.createPath(path, num_it, tolerance));
+
+  delete costmapA;
+}

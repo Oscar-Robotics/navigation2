@@ -204,3 +204,13 @@ TEST(HumanSpeedLimitLaw, a_first_plan_counts_as_moved)
 {
   EXPECT_GT(planDeviation(straightPlan(), {}, 3.6), 1.0);
 }
+
+TEST(HumanSpeedLimitLaw, with_no_reach_distance_an_obstacle_cutting_in_close_ahead_is_predicted_onto_the_plan)
+{
+  // beside the robot, 0.8 m from its centre, crossing its path about 1 m ahead
+  const auto cutting_in = predictedPositions({0.3, 0.8}, {1.2, -0.9}, 0.0, 0.25, 8, footprint(), 0.0);
+  const auto distance = distanceToConflict(straightPlan(), {0.0, 0.0}, cutting_in, 0.6, 3.6);
+  ASSERT_TRUE(distance.has_value());
+  EXPECT_LT(*distance, 1.5);
+  EXPECT_TRUE(predictedPositions({0.3, 0.8}, {1.2, -0.9}, 0.0, 0.25, 8, footprint(), 0.6).empty());
+}

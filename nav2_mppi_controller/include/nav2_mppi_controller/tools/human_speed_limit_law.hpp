@@ -1,16 +1,5 @@
 // Copyright (c) 2026 Oscar Robotics
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+
 #ifndef NAV2_MPPI_CONTROLLER__TOOLS__HUMAN_SPEED_LIMIT_LAW_HPP_
 #define NAV2_MPPI_CONTROLLER__TOOLS__HUMAN_SPEED_LIMIT_LAW_HPP_
 
@@ -98,22 +87,24 @@ inline double distanceToPolygon(const Point & a, const Point & b, const std::vec
 /**
  * @brief Predicted positions of an obstacle moving at constant velocity, up to where it reaches the robot.
  *
- * Positions are taken every step, from first_time, steps + 1 times. Once a disc of the given radius around
- * the obstacle's predicted course touches the robot's footprint, that position and the later ones are left
- * out: an obstacle that would have reached the robot, whether it then stops or passes it, is not predicted
- * beyond it. An obstacle whose disc already touches the footprint has no predicted position.
+ * Positions are taken every step, from first_time, steps + 1 times. Once the obstacle's predicted course
+ * comes within reach_distance of the robot's footprint, that position and the later ones are left out: an
+ * obstacle that would have reached the robot, whether it then stops or passes it, is not predicted beyond
+ * it. An obstacle already within reach_distance of the footprint has no predicted position.
  * @param footprint Corners of the robot's footprint, in order, in the frame of the positions
+ * @param reach_distance Distance from the footprint at which the course counts as reaching the robot; 0
+ * for a course that enters the footprint
  */
 inline std::vector<Point> predictedPositions(
   const Point & position, const Point & velocity, double first_time, double step, int steps,
-  const std::vector<Point> & footprint, double radius)
+  const std::vector<Point> & footprint, double reach_distance)
 {
   std::vector<Point> predicted;
   Point previous;
   for (int k = 0; k <= steps; ++k) {
     const double time = first_time + k * step;
     const Point current{position.first + velocity.first * time, position.second + velocity.second * time};
-    if (distanceToPolygon(k == 0 ? current : previous, current, footprint) <= radius) {
+    if (distanceToPolygon(k == 0 ? current : previous, current, footprint) <= reach_distance) {
       break;
     }
     predicted.push_back(current);

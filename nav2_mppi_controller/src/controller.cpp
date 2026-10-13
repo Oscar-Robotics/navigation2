@@ -84,6 +84,8 @@ void MPPIController::reset()
 {
   optimizer_.reset();
   human_speed_limiter_.reset();
+  optimizer_.setSpeedLimit(external_speed_limit_, external_speed_limit_percentage_);
+  own_speed_limit_applied_ = false;
 }
 
 geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(

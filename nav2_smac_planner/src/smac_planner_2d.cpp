@@ -260,15 +260,20 @@ nav_msgs::msg::Path SmacPlanner2D::createPlan(
     return plan;
   }
 
-  float tolerance = _tolerance;
+  // The goal is the preferred end point; a path that cannot reach it ends within the tolerance of the center
+  _a_star->clearToleranceCenter();
   {
     std::lock_guard<std::mutex> lock(_tolerance_center_mutex);
     if (_tolerance_center && _tolerance_center->header.frame_id == _global_frame) {
-      const float off_center = static_cast<float>(std::hypot(
-          goal.pose.position.x - _tolerance_center->pose.position.x,
-          goal.pose.position.y - _tolerance_center->pose.position.y));
-      if (off_center <= _tolerance) {
-        tolerance = _tolerance - off_center;
+      const double off_center = std::hypot(
+        goal.pose.position.x - _tolerance_center->pose.position.x,
+        goal.pose.position.y - _tolerance_center->pose.position.y);
+      unsigned int mx_center, my_center;
+      if (off_center <= _tolerance &&
+        costmap->worldToMap(
+          _tolerance_center->pose.position.x, _tolerance_center->pose.position.y, mx_center, my_center))
+      {
+        _a_star->setToleranceCenter(mx_center, my_center);
       }
     }
   }
@@ -279,7 +284,7 @@ nav_msgs::msg::Path SmacPlanner2D::createPlan(
   std::string error;
   try {
     if (!_a_star->createPath(
-        path, num_iterations, tolerance / static_cast<float>(costmap->getResolution())))
+        path, num_iterations, _tolerance / static_cast<float>(costmap->getResolution())))
     {
       if (num_iterations < _a_star->getMaxIterations()) {
         error = std::string("no valid path found");

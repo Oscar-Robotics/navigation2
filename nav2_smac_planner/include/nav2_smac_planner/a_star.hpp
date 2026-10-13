@@ -124,6 +124,20 @@ public:
     const unsigned int & dim_3);
 
   /**
+   * @brief Keep the fallback end point within the tolerance of this point rather than of the goal:
+   * when the goal is not reached, the path ends at the node nearest the goal among those within
+   * the tolerance of the center
+   * @param mx The node X index of the center
+   * @param my The node Y index of the center
+   */
+  void setToleranceCenter(const unsigned int & mx, const unsigned int & my);
+
+  /**
+   * @brief Go back to a tolerance around the goal
+   */
+  void clearToleranceCenter();
+
+  /**
    * @brief Set the starting pose for planning, as a node index
    * @param mx The node X index of the goal
    * @param my The node Y index of the goal
@@ -157,6 +171,18 @@ public:
    * @return Reference to Maximum on-appraoch iterations parameter
    */
   int & getOnApproachMaxIterations();
+
+  /**
+   * @brief Whether a node may end the path when the goal is not reached
+   * @param node_coords Coordinates of the node
+   * @return True without a tolerance center, or within the tolerance of it
+   */
+  inline bool isInToleranceArea(const Coordinates & node_coords);
+
+  /**
+   * @brief Whether the search holds a node that may end the path short of the goal
+   */
+  inline bool hasNodeInTolerance();
 
   /**
    * @brief Get tolerance, in node nodes
@@ -240,6 +266,9 @@ protected:
   int _max_on_approach_iterations;
   double _max_planning_time;
   float _tolerance;
+  bool _has_tolerance_center{false};
+  float _tolerance_center_x{0.0f};
+  float _tolerance_center_y{0.0f};
   unsigned int _x_size;
   unsigned int _y_size;
   unsigned int _dim3_size;

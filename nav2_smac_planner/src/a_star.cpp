@@ -299,7 +299,7 @@ bool AStarAlgorithm<NodeT>::createPath(
     // 3) Check if we're at the goal, backtrace if required
     if (isGoal(current_node)) {
       return current_node->backtracePath(path);
-    } else if (_best_heuristic_node.first < getToleranceHeuristic()) {
+    } else if (hasNodeInTolerance()) {
       // Optimization: Let us find when in tolerance and refine within reason
       approach_iterations++;
       if (approach_iterations >= getOnApproachMaxIterations()) {
@@ -330,7 +330,7 @@ bool AStarAlgorithm<NodeT>::createPath(
     }
   }
 
-  if (_best_heuristic_node.first < getToleranceHeuristic()) {
+  if (hasNodeInTolerance()) {
     // If we run out of serach options, return the path that is closest, if within tolerance.
     return _graph.at(_best_heuristic_node.second).backtracePath(path);
   }
@@ -381,11 +381,45 @@ float AStarAlgorithm<NodeT>::getHeuristicCost(const NodePtr & node)
   float heuristic = NodeT::getHeuristicCost(
     node_coords, _goal_coordinates, _costmap);
 
-  if (heuristic < _best_heuristic_node.first) {
+  if (heuristic < _best_heuristic_node.first && isInToleranceArea(node_coords)) {
     _best_heuristic_node = {heuristic, node->getIndex()};
   }
 
   return heuristic;
+}
+
+template<typename NodeT>
+void AStarAlgorithm<NodeT>::setToleranceCenter(const unsigned int & mx, const unsigned int & my)
+{
+  _has_tolerance_center = true;
+  _tolerance_center_x = static_cast<float>(mx);
+  _tolerance_center_y = static_cast<float>(my);
+}
+
+template<typename NodeT>
+void AStarAlgorithm<NodeT>::clearToleranceCenter()
+{
+  _has_tolerance_center = false;
+}
+
+template<typename NodeT>
+bool AStarAlgorithm<NodeT>::isInToleranceArea(const Coordinates & node_coords)
+{
+  if (!_has_tolerance_center) {
+    return true;
+  }
+  return std::hypot(
+    static_cast<float>(node_coords.x) - _tolerance_center_x,
+    static_cast<float>(node_coords.y) - _tolerance_center_y) < getToleranceHeuristic();
+}
+
+template<typename NodeT>
+bool AStarAlgorithm<NodeT>::hasNodeInTolerance()
+{
+  if (_has_tolerance_center) {
+    return _best_heuristic_node.first < std::numeric_limits<float>::max();
+  }
+  return _best_heuristic_node.first < getToleranceHeuristic();
 }
 
 template<typename NodeT>
