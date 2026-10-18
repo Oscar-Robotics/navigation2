@@ -42,6 +42,9 @@ This process is then repeated a number of times and returns a converged solution
  | batch_size                 | int    | Default 1000. Count of randomly sampled candidate trajectories                                            |
  | time_steps                 | int    | Default 56. Number of time steps (points) in each sampled trajectory                                     |
  | model_dt                   | double | Default: 0.05. Time interval (s) between two sampled points in trajectories.                              |
+ | model_delay_vx             | double | Default: 0.0. Input delay (s) on the vx axis, compensated by replaying in-flight commands. Rounded to the nearest multiple of model_dt. |
+ | model_delay_vy             | double | Default: 0.0. Input delay (s) on the vy axis, if holonomic. Rounded to the nearest multiple of model_dt. |
+ | model_delay_wz             | double | Default: 0.0. Input delay (s) on the wz axis. Rounded to the nearest multiple of model_dt. |
  | vx_std                     | double | Default 0.2. Sampling standard deviation for VX                                                          |
  | vy_std                     | double | Default 0.2. Sampling standard deviation for VY                                                          |
  | wz_std                     | double | Default 0.4. Sampling standard deviation for Wz                                                          |

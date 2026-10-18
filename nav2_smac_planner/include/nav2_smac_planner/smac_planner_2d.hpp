@@ -119,6 +119,12 @@ protected:
   std::mutex _mutex;
   rclcpp_lifecycle::LifecycleNode::WeakPtr _node;
 
+  // Centre of the goal tolerance when it is not the goal itself: the tolerance is then reduced
+  // so that a path accepted short of the goal still ends within tolerance of this centre
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _tolerance_center_sub;
+  geometry_msgs::msg::PoseStamped::ConstSharedPtr _tolerance_center;
+  std::mutex _tolerance_center_mutex;
+
   // Dynamic parameters handler
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr _dyn_params_handler;
 };

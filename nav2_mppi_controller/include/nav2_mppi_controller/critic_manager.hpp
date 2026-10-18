@@ -69,6 +69,22 @@ public:
     */
   void evalTrajectoriesScores(CriticData & data) const;
 
+  /**
+    * @brief Keep the cost each critic adds at every evaluation
+    * @param record Whether to keep them
+    */
+  void recordCriticCosts(bool record) {record_critic_costs_ = record;}
+
+  /**
+    * @brief Names of the loaded critics, in scoring order
+    */
+  const std::vector<std::string> & getCriticNames() const {return critic_names_;}
+
+  /**
+    * @brief Cost added by each critic at the last evaluation, in scoring order
+    */
+  const std::vector<xt::xtensor<float, 1>> & getCriticCosts() const {return critic_costs_;}
+
 protected:
   /**
     * @brief Get parameters (critics to load)
@@ -94,6 +110,8 @@ protected:
   std::vector<std::string> critic_names_;
   std::unique_ptr<pluginlib::ClassLoader<critics::CriticFunction>> loader_;
   std::vector<std::unique_ptr<critics::CriticFunction>> critics_;
+  bool record_critic_costs_{false};
+  mutable std::vector<xt::xtensor<float, 1>> critic_costs_;
 
   rclcpp::Logger logger_{rclcpp::get_logger("MPPIController")};
 };

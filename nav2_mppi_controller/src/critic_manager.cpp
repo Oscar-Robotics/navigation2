@@ -67,11 +67,18 @@ std::string CriticManager::getFullName(const std::string & name)
 void CriticManager::evalTrajectoriesScores(
   CriticData & data) const
 {
+  critic_costs_.clear();
   for (size_t q = 0; q < critics_.size(); q++) {
     if (data.fail_flag) {
       break;
     }
+    if (!record_critic_costs_) {
+      critics_[q]->score(data);
+      continue;
+    }
+    xt::xtensor<float, 1> costs_before = data.costs;
     critics_[q]->score(data);
+    critic_costs_.push_back(data.costs - costs_before);
   }
 }
 

@@ -10,6 +10,7 @@ set(TEST_NAMES
   path_handler_test
   critic_manager_test
   optimizer_unit_tests
+  human_speed_limit_law_test
 )
 
 foreach(name IN LISTS TEST_NAMES)
